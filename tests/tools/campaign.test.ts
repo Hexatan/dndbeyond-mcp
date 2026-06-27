@@ -8,6 +8,10 @@ import type { DdbCampaign } from "../../src/types/api.js";
 // campaigns you DM. Mock it so ownership marking is deterministic in tests.
 vi.mock("../../src/api/auth.js", () => ({ getUserId: vi.fn() }));
 
+// getCampaignCharacters fetches each character's full sheet to compute level;
+// mock the level computation so the roster level is deterministic in tests.
+vi.mock("../../src/utils/character-calculations.js", () => ({ computeLevel: vi.fn(() => 5) }));
+
 const sampleCampaigns: DdbCampaign[] = [
   {
     id: 101,
@@ -113,19 +117,33 @@ describe("campaign tools", () => {
   });
 
   describe("getCampaignCharacters", () => {
-    it("shouldReturnFormattedPartyRoster", async () => {
+    it("shouldReturnFormattedPartyRosterWithLevels", async () => {
+      // campaigns, then short characters, then a full sheet per character (for level).
       vi.mocked(mockClient.get)
         .mockResolvedValueOnce(sampleCampaigns)
-        .mockResolvedValueOnce(sampleCharacters101);
+        .mockResolvedValueOnce(sampleCharacters101)
+        .mockResolvedValue({} as never); // sheet fetches; computeLevel is mocked → 5
 
       const result = await getCampaignCharacters(mockClient, { campaignId: 101 });
 
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe("text");
       expect(result.content[0].text).toContain('Party Roster for "Lost Mines of Phandelver"');
-      expect(result.content[0].text).toContain("Thorin Stonehammer (id: 1001, player1)");
-      expect(result.content[0].text).toContain("Elara Moonwhisper (id: 1002, player2)");
-      expect(result.content[0].text).toContain("Grimjaw (id: 1003, player3)");
+      expect(result.content[0].text).toContain("Thorin Stonehammer (id: 1001, Level 5, player1)");
+      expect(result.content[0].text).toContain("Elara Moonwhisper (id: 1002, Level 5, player2)");
+      expect(result.content[0].text).toContain("Grimjaw (id: 1003, Level 5, player3)");
+    });
+
+    it("shouldOmitLevelWhenCharacterSheetIsUnavailable", async () => {
+      vi.mocked(mockClient.get)
+        .mockResolvedValueOnce(sampleCampaigns)
+        .mockResolvedValueOnce(sampleCharacters102)
+        .mockRejectedValue(new Error("sheet is private")); // sheet fetch fails
+
+      const result = await getCampaignCharacters(mockClient, { campaignId: 102 });
+
+      expect(result.content[0].text).toContain("Van Helsing (id: 2001, hunter)");
+      expect(result.content[0].text).not.toContain("Level");
     });
 
     it("shouldHandleCampaignNotFound", async () => {

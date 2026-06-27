@@ -1,7 +1,9 @@
 import { DdbClient } from "../api/client.js";
 import { getUserId } from "../api/auth.js";
 import { ENDPOINTS } from "../api/endpoints.js";
+import { computeLevel } from "../utils/character-calculations.js";
 import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
+import type { DdbCharacter } from "../types/character.js";
 
 const CAMPAIGN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -92,10 +94,30 @@ export async function getCampaignCharacters(
     };
   }
 
+  // The roster endpoint omits each character's level, so fetch each full sheet
+  // to compute it. Done in parallel; a private/unavailable sheet yields an
+  // undefined level (omitted from that line) rather than failing the roster.
+  const levels = await Promise.all(
+    characters.map(async (character) => {
+      try {
+        const sheet = await client.get<DdbCharacter>(
+          ENDPOINTS.character.get(character.id),
+          `character:${character.id}`,
+          CAMPAIGN_CACHE_TTL
+        );
+        return computeLevel(sheet);
+      } catch {
+        return undefined;
+      }
+    })
+  );
+
   const lines = [`Party Roster for "${campaign.name}":`, ""];
-  for (const character of characters) {
-    lines.push(`• ${character.name} (id: ${character.id}, ${character.userName})`);
-  }
+  characters.forEach((character, i) => {
+    const level = levels[i];
+    const levelStr = level !== undefined ? `, Level ${level}` : "";
+    lines.push(`• ${character.name} (id: ${character.id}${levelStr}, ${character.userName})`);
+  });
 
   return {
     content: [
