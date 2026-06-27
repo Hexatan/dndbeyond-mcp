@@ -1062,26 +1062,146 @@ const CONDITIONS: Record<string, { name: string; description: string; effects: s
   },
 };
 
+// 2024 (SRD 5.2) conditions. Verify text against SRD 5.2 before edits.
+const CONDITIONS_2024: Record<string, { name: string; description: string; effects: string[] }> = {
+  blinded: {
+    name: "Blinded",
+    description: "You can't see and automatically fail any ability check that requires sight.",
+    effects: ["Attack rolls against you have Advantage, and your attack rolls have Disadvantage."],
+  },
+  charmed: {
+    name: "Charmed",
+    description: "You can't attack the charmer or target the charmer with damaging abilities or magical effects.",
+    effects: ["The charmer has Advantage on any ability check to interact with you socially."],
+  },
+  deafened: {
+    name: "Deafened",
+    description: "You can't hear and automatically fail any ability check that requires hearing.",
+    effects: [],
+  },
+  exhaustion: {
+    name: "Exhaustion",
+    description: "Exhaustion is cumulative and measured in levels. Each time you receive it you gain 1 level; you die if your Exhaustion level reaches 6.",
+    effects: [
+      "D20 Tests: every D20 Test you make is reduced by 2 times your Exhaustion level.",
+      "Speed: your Speed is reduced by a number of feet equal to 5 times your Exhaustion level.",
+      "Recovery: finishing a Long Rest removes 1 level; the condition ends when your level reaches 0.",
+    ],
+  },
+  frightened: {
+    name: "Frightened",
+    description: "You have Disadvantage on ability checks and attack rolls while the source of your fear is within line of sight.",
+    effects: ["You can't willingly move closer to the source of your fear."],
+  },
+  grappled: {
+    name: "Grappled",
+    description: "Your Speed is 0 and can't increase.",
+    effects: [
+      "You have Disadvantage on attack rolls against any target other than the grappler.",
+      "The grappler can drag or carry you when it moves, but every foot of movement costs it 1 extra foot unless you are Tiny or two or more sizes smaller than it.",
+      "The condition ends if the grappler has the Incapacitated condition or if you are moved outside the grappler's reach.",
+    ],
+  },
+  incapacitated: {
+    name: "Incapacitated",
+    description: "You can't take any action, Bonus Action, or Reaction.",
+    effects: [
+      "Your Concentration is broken.",
+      "You can't speak.",
+      "If you're Incapacitated when you roll Initiative, you have Disadvantage on the roll.",
+    ],
+  },
+  invisible: {
+    name: "Invisible",
+    description: "You aren't affected by any effect that requires its target to be seen unless the effect's creator can somehow see you. Any equipment you wear or carry is also concealed.",
+    effects: [
+      "If you're Invisible when you roll Initiative, you have Advantage on the roll.",
+      "Attack rolls against you have Disadvantage, and your attack rolls have Advantage. A creature that can somehow see you doesn't get this against you.",
+    ],
+  },
+  paralyzed: {
+    name: "Paralyzed",
+    description: "You have the Incapacitated condition and your Speed is 0 and can't increase.",
+    effects: [
+      "You automatically fail Strength and Dexterity saving throws.",
+      "Attack rolls against you have Advantage.",
+      "Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you.",
+    ],
+  },
+  petrified: {
+    name: "Petrified",
+    description: "You are transformed, along with any nonmagical objects you are wearing and carrying, into a solid inanimate substance (usually stone). Your weight increases by a factor of ten, and you cease aging.",
+    effects: [
+      "You have the Incapacitated condition and your Speed is 0 and can't increase.",
+      "Attack rolls against you have Advantage.",
+      "You automatically fail Strength and Dexterity saving throws.",
+      "You have Resistance to all damage.",
+      "You have Immunity to the Poisoned condition.",
+    ],
+  },
+  poisoned: {
+    name: "Poisoned",
+    description: "You have Disadvantage on attack rolls and ability checks.",
+    effects: [],
+  },
+  prone: {
+    name: "Prone",
+    description: "Your only movement options are to crawl or to spend movement equal to half your Speed (round down) to right yourself and end the condition. If your Speed is 0, you can't right yourself.",
+    effects: [
+      "You have Disadvantage on attack rolls.",
+      "An attack roll against you has Advantage if the attacker is within 5 feet of you; otherwise, it has Disadvantage.",
+    ],
+  },
+  restrained: {
+    name: "Restrained",
+    description: "Your Speed is 0 and can't increase.",
+    effects: [
+      "Attack rolls against you have Advantage, and your attack rolls have Disadvantage.",
+      "You have Disadvantage on Dexterity saving throws.",
+    ],
+  },
+  stunned: {
+    name: "Stunned",
+    description: "You have the Incapacitated condition.",
+    effects: [
+      "You automatically fail Strength and Dexterity saving throws.",
+      "Attack rolls against you have Advantage.",
+    ],
+  },
+  unconscious: {
+    name: "Unconscious",
+    description: "You have the Incapacitated and Prone conditions, and you drop whatever you're holding. When the condition ends, you remain Prone.",
+    effects: [
+      "You're unaware of your surroundings.",
+      "Your Speed is 0 and can't increase.",
+      "You automatically fail Strength and Dexterity saving throws.",
+      "Attack rolls against you have Advantage.",
+      "Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you.",
+    ],
+  },
+};
+
 /**
  * Get the rules text for a specific condition.
  */
 export async function getCondition(
   _client: DdbClient,
-  params: { conditionName: string }
+  params: { conditionName: string; edition?: "2014" | "2024" }
 ): Promise<ToolResult> {
+  const set = params.edition === "2024" ? CONDITIONS_2024 : CONDITIONS;
   const searchName = params.conditionName.toLowerCase().trim();
-  const condition = CONDITIONS[searchName];
+  const condition = set[searchName];
 
   if (!condition) {
     // Try partial match
-    const match = Object.values(CONDITIONS).find(
+    const match = Object.values(set).find(
       (c) => c.name.toLowerCase().includes(searchName)
     );
     if (match) {
       return formatConditionDetails(match);
     }
 
-    const available = Object.values(CONDITIONS).map((c) => c.name).join(", ");
+    const available = Object.values(set).map((c) => c.name).join(", ");
     return {
       content: [
         { type: "text", text: `Condition "${params.conditionName}" not found.\n\nAvailable conditions: ${available}` },
