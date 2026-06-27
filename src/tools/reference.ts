@@ -1172,6 +1172,7 @@ const CONDITIONS_2024: Record<string, { name: string; description: string; effec
     name: "Unconscious",
     description: "You have the Incapacitated and Prone conditions, and you drop whatever you're holding. When the condition ends, you remain Prone.",
     effects: [
+      "You're unaware of your surroundings.",
       "Your Speed is 0 and can't increase.",
       "You automatically fail Strength and Dexterity saving throws.",
       "Attack rolls against you have Advantage.",
