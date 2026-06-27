@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { listCampaigns, getCampaignCharacters } from "../../src/tools/campaign.js";
 import { DdbClient } from "../../src/api/client.js";
+import { getUserId } from "../../src/api/auth.js";
 import type { DdbCampaign } from "../../src/types/api.js";
+
+// The campaign tool resolves the authenticated user (User.ID cookie) to mark the
+// campaigns you DM. Mock it so ownership marking is deterministic in tests.
+vi.mock("../../src/api/auth.js", () => ({ getUserId: vi.fn() }));
 
 const sampleCampaigns: DdbCampaign[] = [
   {
@@ -44,7 +49,8 @@ describe("campaign tools", () => {
   });
 
   describe("listCampaigns", () => {
-    it("shouldFormatCampaignListCorrectly", async () => {
+    it("shouldIncludeCampaignIdAndMarkOwnedCampaignsAsYou", async () => {
+      vi.mocked(getUserId).mockResolvedValue(1); // current user DMs campaign 101
       vi.mocked(mockClient.get).mockResolvedValue(sampleCampaigns);
 
       const result = await listCampaigns(mockClient);
@@ -52,12 +58,21 @@ describe("campaign tools", () => {
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe("text");
       expect(result.content[0].text).toContain("Active Campaigns:");
-      expect(result.content[0].text).toContain("Lost Mines of Phandelver");
-      expect(result.content[0].text).toContain("DM: DungeonMaster");
-      expect(result.content[0].text).toContain("3 players");
-      expect(result.content[0].text).toContain("Curse of Strahd");
-      expect(result.content[0].text).toContain("DM: DarkDM");
-      expect(result.content[0].text).toContain("1 player");
+      // Owned campaign: includes id and is marked "DM: you".
+      expect(result.content[0].text).toContain("Lost Mines of Phandelver (id: 101, DM: you, 3 players)");
+      // Not owned: includes id and shows the real DM username.
+      expect(result.content[0].text).toContain("Curse of Strahd (id: 102, DM: DarkDM, 1 player)");
+    });
+
+    it("shouldShowRealDmUsernamesWhenCurrentUserUnknown", async () => {
+      vi.mocked(getUserId).mockResolvedValue(null);
+      vi.mocked(mockClient.get).mockResolvedValue(sampleCampaigns);
+
+      const result = await listCampaigns(mockClient);
+
+      expect(result.content[0].text).toContain("Lost Mines of Phandelver (id: 101, DM: DungeonMaster, 3 players)");
+      expect(result.content[0].text).toContain("Curse of Strahd (id: 102, DM: DarkDM, 1 player)");
+      expect(result.content[0].text).not.toContain("DM: you");
     });
 
     it("shouldHandleEmptyCampaignList", async () => {
@@ -108,9 +123,9 @@ describe("campaign tools", () => {
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe("text");
       expect(result.content[0].text).toContain('Party Roster for "Lost Mines of Phandelver"');
-      expect(result.content[0].text).toContain("Thorin Stonehammer (player1)");
-      expect(result.content[0].text).toContain("Elara Moonwhisper (player2)");
-      expect(result.content[0].text).toContain("Grimjaw (player3)");
+      expect(result.content[0].text).toContain("Thorin Stonehammer (id: 1001, player1)");
+      expect(result.content[0].text).toContain("Elara Moonwhisper (id: 1002, player2)");
+      expect(result.content[0].text).toContain("Grimjaw (id: 1003, player3)");
     });
 
     it("shouldHandleCampaignNotFound", async () => {

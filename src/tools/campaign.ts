@@ -1,4 +1,5 @@
 import { DdbClient } from "../api/client.js";
+import { getUserId } from "../api/auth.js";
 import { ENDPOINTS } from "../api/endpoints.js";
 import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
 
@@ -26,11 +27,15 @@ export async function listCampaigns(client: DdbClient, includeAll?: boolean) {
     };
   }
 
+  // Resolve the authenticated user so we can mark the campaigns they DM. The id
+  // lets clients fetch the party roster; "DM: you" flags campaigns you own.
+  const myId = await getUserId();
   const lines = ["Active Campaigns:", ""];
   for (const campaign of campaigns) {
     const playerCount = campaign.playerCount;
+    const dm = myId != null && campaign.dmId === myId ? "you" : campaign.dmUsername;
     lines.push(
-      `• ${campaign.name} (DM: ${campaign.dmUsername}, ${playerCount} player${playerCount !== 1 ? "s" : ""})`
+      `• ${campaign.name} (id: ${campaign.id}, DM: ${dm}, ${playerCount} player${playerCount !== 1 ? "s" : ""})`
     );
   }
 
@@ -89,7 +94,7 @@ export async function getCampaignCharacters(
 
   const lines = [`Party Roster for "${campaign.name}":`, ""];
   for (const character of characters) {
-    lines.push(`• ${character.name} (${character.userName})`);
+    lines.push(`• ${character.name} (id: ${character.id}, ${character.userName})`);
   }
 
   return {
