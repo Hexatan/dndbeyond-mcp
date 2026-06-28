@@ -452,7 +452,11 @@ function abilityMod(score: number): string {
 }
 
 /** A monster-ish record carrying DDB's legacy flag. */
-type EditionRanked = { name: string; isLegacy?: boolean };
+export type EditionRanked = {
+  name: string;
+  /** Optional so plain test stubs may omit it; treated as non-legacy (2024) when absent. */
+  isLegacy?: boolean;
+};
 
 /**
  * Pick the variant matching the requested edition (2024 = non-legacy, 2014 =
