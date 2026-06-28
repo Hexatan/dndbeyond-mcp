@@ -1,5 +1,5 @@
 import { runAuthFlow } from "../../setup/auth-flow.js";
-import { isAuthenticated } from "../api/auth.js";
+import { isAuthenticated, getCobaltToken } from "../api/auth.js";
 import type { DdbClient } from "../api/client.js";
 
 interface CallToolResult {
@@ -31,38 +31,23 @@ export async function setupAuth(): Promise<CallToolResult> {
   }
 }
 
-export async function checkAuth(client: DdbClient): Promise<CallToolResult> {
+export async function checkAuth(_client: DdbClient): Promise<CallToolResult> {
   const hasSession = await isAuthenticated();
-  const expired = client.isAuthExpired;
-
   if (!hasSession) {
     return {
-      content: [
-        {
-          type: "text",
-          text: "Not authenticated — run setup_auth to log in via browser.",
-        },
-      ],
+      content: [{ type: "text", text: "Not authenticated — run setup_auth to log in via browser." }],
     };
   }
-
-  if (expired) {
+  try {
+    await getCobaltToken();
+  } catch {
     return {
       content: [
-        {
-          type: "text",
-          text: "Session expired (received 401 from API) — run setup_auth to refresh your credentials.",
-        },
+        { type: "text", text: "Session expired (received 401 from API) — run setup_auth to refresh your credentials." },
       ],
     };
   }
-
   return {
-    content: [
-      {
-        type: "text",
-        text: "Authenticated — CobaltSession cookie found and no 401 errors detected.",
-      },
-    ],
+    content: [{ type: "text", text: "Authenticated — CobaltSession cookie found and no 401 errors detected." }],
   };
 }
