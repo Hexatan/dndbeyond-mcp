@@ -610,7 +610,7 @@ export async function searchMonsters(
     const homebrewTag = m.isHomebrew ? " [Homebrew]" : "";
     const editionTag =
       params.edition && Boolean(m.isLegacy) !== (params.edition === "2014")
-        ? (m.isLegacy ? " [2014]" : " [2024]")
+        ? m.isLegacy ? " [2014]" : " [2024]"
         : "";
     lines.push(
       `- **${m.name}**${homebrewTag}${editionTag} — CR ${crStr}, ${sizeName} ${typeName}, AC ${m.armorClass}, ${m.averageHitPoints} HP${m.isLegendary ? " ★" : ""}`

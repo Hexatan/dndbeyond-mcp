@@ -759,7 +759,7 @@ export async function startServer(): Promise<void> {
       edition: z
         .enum(["2014", "2024"])
         .optional()
-        .describe("Rules edition to prefer: 2024 (current) or 2014 (legacy). Collapses cross-edition duplicates."),
+        .describe("Rules edition to prefer: 2024 (current) or 2014 (legacy). Selects the matching variant when both exist."),
     },
     async (params) =>
       getMonster(client, {

@@ -283,7 +283,7 @@ describe("getMonster edition", () => {
   it("fetches the detail for the edition-matching variant", async () => {
     const search = {
       accessType: {},
-      pagination: { take: 5, skip: 0, currentPage: 1, pages: 1, total: 2 },
+      pagination: { take: 10, skip: 0, currentPage: 1, pages: 1, total: 2 },
       data: [
         monsterVariant({ id: 11, name: "Goblin", isLegacy: true }),
         monsterVariant({ id: 22, name: "Goblin", isLegacy: false }),
@@ -300,7 +300,8 @@ describe("getMonster edition", () => {
     });
     const mc = { get: vi.fn(), getRaw } as unknown as DdbClient;
 
-    await getMonster(mc, { monsterName: "Goblin", edition: "2024" });
+    const result = await getMonster(mc, { monsterName: "Goblin", edition: "2024" });
+    expect(result.content[0].text).toContain("Goblin");
     const nonConfig = urls.filter((u) => !u.includes("config"));
     expect(nonConfig.some((u) => u.includes("22"))).toBe(true);
     expect(nonConfig.some((u) => u.includes("11"))).toBe(false);
