@@ -451,6 +451,51 @@ function abilityMod(score: number): string {
   return mod >= 0 ? `+${mod}` : `${mod}`;
 }
 
+/** A monster-ish record carrying DDB's legacy flag. */
+type EditionRanked = { name: string; isLegacy?: boolean };
+
+/**
+ * Pick the variant matching the requested edition (2024 = non-legacy, 2014 =
+ * legacy); fall back to the first candidate when no edition is given or none match.
+ * Mirrors getSpell's variant selection.
+ */
+export function pickByEdition<T extends EditionRanked>(
+  candidates: T[],
+  edition?: "2014" | "2024",
+): T {
+  if (!edition) return candidates[0];
+  const wantLegacy = edition === "2014";
+  return candidates.find((c) => Boolean(c.isLegacy) === wantLegacy) ?? candidates[0];
+}
+
+/**
+ * Collapse same-name cross-edition duplicates to one row per name, preferring the
+ * requested edition's variant (keeping single-edition monsters as-is). Preserves
+ * first-seen name order. Returns the input unchanged when no edition is given.
+ */
+export function collapseByEdition<T extends EditionRanked>(
+  monsters: T[],
+  edition?: "2014" | "2024",
+): T[] {
+  if (!edition) return monsters;
+  const byName = new Map<string, T[]>();
+  for (const m of monsters) {
+    const key = m.name.toLowerCase();
+    const arr = byName.get(key);
+    if (arr) arr.push(m);
+    else byName.set(key, [m]);
+  }
+  const out: T[] = [];
+  const seen = new Set<string>();
+  for (const m of monsters) {
+    const key = m.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(pickByEdition(byName.get(key)!, edition));
+  }
+  return out;
+}
+
 /**
  * Search for monsters by name.
  * When CR/type/size filters are provided without a name search, fetches multiple pages

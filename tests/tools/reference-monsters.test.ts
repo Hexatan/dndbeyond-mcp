@@ -1,7 +1,46 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { searchMonsters, getMonster } from "../../src/tools/reference.js";
+import { searchMonsters, getMonster, pickByEdition, collapseByEdition } from "../../src/tools/reference.js";
 import { DdbClient } from "../../src/api/client.js";
 import { MonsterSearchParams } from "../../src/types/reference.js";
+
+describe("pickByEdition", () => {
+  const legacy = { id: 1, name: "Goblin", isLegacy: true };
+  const modern = { id: 2, name: "Goblin", isLegacy: false };
+
+  it("returns the non-legacy variant for edition 2024", () => {
+    expect(pickByEdition([legacy, modern], "2024")).toBe(modern);
+  });
+  it("returns the legacy variant for edition 2014", () => {
+    expect(pickByEdition([legacy, modern], "2014")).toBe(legacy);
+  });
+  it("falls back to the only variant present when no edition match", () => {
+    expect(pickByEdition([legacy], "2024")).toBe(legacy);
+  });
+  it("returns the first candidate when edition is omitted", () => {
+    expect(pickByEdition([legacy, modern], undefined)).toBe(legacy);
+  });
+});
+
+describe("collapseByEdition", () => {
+  const gobLegacy = { id: 1, name: "Goblin", isLegacy: true };
+  const gobModern = { id: 2, name: "goblin", isLegacy: false };
+  const owlbear2014 = { id: 3, name: "Owlbear", isLegacy: true };
+
+  it("collapses same-name cross-edition duplicates to the selected edition (one row per name)", () => {
+    const out = collapseByEdition([gobLegacy, gobModern, owlbear2014], "2024");
+    expect(out).toHaveLength(2);
+    expect(out[0]).toBe(gobModern); // 2024 variant kept
+    expect(out[1]).toBe(owlbear2014); // only-2014 monster kept
+  });
+  it("preserves first-seen name order", () => {
+    const out = collapseByEdition([owlbear2014, gobLegacy, gobModern], "2024");
+    expect(out.map((m) => m.name.toLowerCase())).toEqual(["owlbear", "goblin"]);
+  });
+  it("returns the input unchanged when edition is omitted", () => {
+    const input = [gobLegacy, gobModern];
+    expect(collapseByEdition(input, undefined)).toBe(input);
+  });
+});
 
 const MOCK_CONFIG = {
   challengeRatings: [
