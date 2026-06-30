@@ -197,6 +197,11 @@ describe("searchMonsters", () => {
 
     expect(result.content[0].text).toContain("Monster Search Results");
     expect(result.content[0].text).toContain("Goblin");
+
+    const monsterUrl = vi.mocked(mockClient.getRaw).mock.calls.find(
+      (call) => !call[0].toString().includes("config/json")
+    )?.[0].toString();
+    expect(monsterUrl).toContain("skip=20");
   });
 
   it("shouldDefaultToPage1WhenPageNotSpecified", async () => {

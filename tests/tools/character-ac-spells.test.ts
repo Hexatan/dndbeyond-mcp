@@ -636,4 +636,120 @@ describe("Spell Save DC Calculation", () => {
     expect(text).toContain("Cleric: DC 15 (+7 attack)");
     expect(text).toContain("Sorcerer: DC 14 (+6 attack)");
   });
+
+  it("should prefer spellCastingAbilityId from character class data", async () => {
+    const character: DdbCharacter = {
+      ...baseCharacter,
+      stats: [
+        { id: 1, value: 10 },
+        { id: 2, value: 14 },
+        { id: 3, value: 16 },
+        { id: 4, value: 18 },
+        { id: 5, value: 10 },
+        { id: 6, value: 10 },
+      ],
+      classes: [
+        {
+          id: 1,
+          definition: { name: "Mystic", spellCastingAbilityId: 4 },
+          subclassDefinition: null,
+          level: 5,
+          isStartingClass: true,
+          classFeatures: [],
+        },
+      ],
+      inventory: [],
+      modifiers: { race: [], class: [], background: [], item: [], feat: [], condition: [] },
+      spells: {
+        race: [],
+        class: [
+          {
+            id: 1,
+            definition: {
+              name: "Mind Spike",
+              level: 2,
+              school: "Divination",
+              description: "Psychic spell",
+              range: null,
+              duration: null,
+              activation: null,
+              components: null,
+              componentsDescription: null,
+              concentration: false,
+              ritual: false,
+            },
+            prepared: true,
+            alwaysPrepared: false,
+            usesSpellSlot: true,
+          },
+        ],
+        background: [],
+        item: [],
+        feat: [],
+      },
+    };
+
+    const client = createMockClient();
+    vi.mocked(client.get).mockResolvedValue(character);
+
+    const result = await getCharacter(client, { characterId: 12345, detail: "sheet" });
+    const text = result.content[0].text;
+
+    expect(text).toContain("Spell Save DC: 15");
+    expect(text).toContain("Spell Attack: +7");
+  });
+});
+
+describe("Speed Display", () => {
+  it("should display multiple speeds from character speed data", async () => {
+    const character: DdbCharacter = {
+      ...baseCharacter,
+      weightSpeeds: {
+        normal: {
+          walk: 30,
+          fly: 60,
+          swim: 30,
+        },
+      },
+      classes: [
+        {
+          id: 1,
+          definition: { name: "Monk" },
+          subclassDefinition: null,
+          level: 5,
+          isStartingClass: true,
+          classFeatures: [],
+        },
+      ],
+      inventory: [],
+      modifiers: {
+        race: [],
+        class: [
+          {
+            id: 1,
+            type: "bonus",
+            subType: "unarmored-movement",
+            value: 10,
+            friendlyTypeName: "Bonus",
+            friendlySubtypeName: "Unarmored Movement",
+            componentId: 1,
+            componentTypeId: 1,
+          },
+        ],
+        background: [],
+        item: [],
+        feat: [],
+        condition: [],
+      },
+      spells: { race: [], class: [], background: [], item: [], feat: [] },
+    };
+
+    const client = createMockClient();
+    vi.mocked(client.get).mockResolvedValue(character);
+
+    const result = await getCharacter(client, { characterId: 12345, detail: "sheet" });
+    const text = result.content[0].text;
+
+    expect(text).toContain("Speed: 40 ft, fly 60 ft, swim 30 ft");
+  });
 });

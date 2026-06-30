@@ -188,5 +188,17 @@ describe("campaign tools", () => {
         expect.any(Number)
       );
     });
+
+    it("shouldUseUserCampaignsEndpointWhenIncludeAllIsTrue", async () => {
+      vi.mocked(mockClient.get)
+        .mockResolvedValueOnce(sampleCampaigns)
+        .mockResolvedValueOnce(sampleCharacters101)
+        .mockResolvedValue({} as never);
+
+      await getCampaignCharacters(mockClient, { campaignId: 101, includeAll: true });
+
+      expect(vi.mocked(mockClient.get).mock.calls[0][0]).toContain("user-campaigns");
+      expect(vi.mocked(mockClient.get).mock.calls[0][1]).toBe("user-campaigns");
+    });
   });
 });

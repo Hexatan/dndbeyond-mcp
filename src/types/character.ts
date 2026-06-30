@@ -40,6 +40,9 @@ export interface DdbCharacter {
     available: number;
   }>;
   hitDiceUsed?: number;
+  weightSpeeds?: DdbWeightSpeeds;
+  speed?: DdbMovementSpeeds | number;
+  speeds?: DdbMovementSpeeds;
 }
 
 export interface DdbRace {
@@ -47,15 +50,30 @@ export interface DdbRace {
   baseRaceName: string;
   isHomebrew: boolean;
   racialTraits: DdbRacialTrait[];
+  weightSpeeds?: DdbWeightSpeeds;
+  speed?: DdbMovementSpeeds | number;
 }
 
 export interface DdbClass {
   id: number;
-  definition: { id: number; name: string };
+  definition: { id: number; name: string; spellCastingAbilityId?: number | null };
+  spellCastingAbilityId?: number | null;
   subclassDefinition: { name: string; classFeatures: DdbClassFeature[] } | null;
   level: number;
   isStartingClass: boolean;
   classFeatures: DdbClassFeature[];
+}
+
+export interface DdbMovementSpeeds {
+  walk?: number | null;
+  fly?: number | null;
+  swim?: number | null;
+  climb?: number | null;
+  burrow?: number | null;
+}
+
+export interface DdbWeightSpeeds {
+  normal?: DdbMovementSpeeds;
 }
 
 export interface DdbBackground {

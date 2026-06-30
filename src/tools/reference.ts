@@ -511,7 +511,8 @@ export async function searchMonsters(
 ): Promise<ToolResult> {
   const searchTerm = params.name || "";
   const hasFilters = params.cr !== undefined || params.type !== undefined || params.size !== undefined;
-  const shouldPaginate = hasFilters && !searchTerm;
+  const page = Math.max(1, params.page ?? 1);
+  const shouldPaginate = hasFilters && !searchTerm && params.page === undefined;
 
   const config = await getGameConfig(client);
   const crMap = new Map(config.challengeRatings.map((cr) => [cr.id, cr]));
@@ -525,10 +526,11 @@ export async function searchMonsters(
   let totalInDataset = 0;
   let pagesSearched = 0;
   const maxPages = shouldPaginate ? 10 : 1; // Fetch up to 10 pages (200 results) when filtering
+  const startPage = shouldPaginate ? 1 : page;
 
   // Fetch multiple pages if we're filtering without a name search
   for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
-    const skip = pageIdx * 20;
+    const skip = (startPage - 1 + pageIdx) * 20;
     const url = ENDPOINTS.monster.search(searchTerm, skip, 20, params.showHomebrew, sourceId);
     const cacheKey = `monsters:search:${searchTerm}:${skip}:${params.showHomebrew ?? false}:${sourceId ?? ""}`;
 
@@ -594,7 +596,7 @@ export async function searchMonsters(
 
   const searchInfo = shouldPaginate
     ? `searched ${allMonsters.length} of ${totalInDataset} total monsters across ${pagesSearched} pages`
-    : `showing results from page 1`;
+    : `showing results from page ${page}`;
 
   const lines = [`# Monster Search Results (${monsters.length} matches, ${searchInfo})\n`];
 
