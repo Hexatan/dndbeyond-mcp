@@ -146,6 +146,8 @@ export interface DdbSpell {
 
 export interface DdbInventoryItem {
   id: number;
+  entityTypeId?: number;
+  isProficient?: boolean;
   definition: {
     name: string;
     description: string;
@@ -154,6 +156,7 @@ export interface DdbInventoryItem {
     weight: number;
     cost: number | null;
     isHomebrew: boolean;
+    entityTypeId?: number;
     armorClass?: number | null;
     filterType?: string;
   };

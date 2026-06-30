@@ -88,9 +88,9 @@ function createMockCharacter(): DdbCharacter {
             level: 0,
             school: "Enchantment",
             description: "The target takes 1d6 psychic damage.",
-            range: null,
-            duration: null,
-            activation: null,
+            range: { origin: "Ranged", rangeValue: 60, aoeType: null, aoeValue: null },
+            duration: { durationInterval: 1, durationUnit: "Round", durationType: "Time" },
+            activation: { activationTime: 1, activationType: 1 },
             components: [1],
             componentsDescription: null,
             concentration: false,
@@ -141,6 +141,21 @@ function createMockCharacter(): DdbCharacter {
       },
       {
         id: 2,
+        entityTypeId: 1782728300,
+        definition: {
+          name: "Crossbow, Light",
+          description: "",
+          type: "Equipment",
+          rarity: "Common",
+          weight: 5,
+          cost: 25,
+          isHomebrew: false,
+        },
+        equipped: true,
+        quantity: 1,
+      },
+      {
+        id: 3,
         definition: {
           name: "Backpack",
           description: "",
@@ -180,16 +195,50 @@ function createMockCharacter(): DdbCharacter {
           },
         },
       ],
+      item: [
+        {
+          id: 2,
+          entityTypeId: 1,
+          name: "Quarterstaff",
+          componentId: 1,
+          componentTypeId: 1,
+          limitedUse: null,
+          displayAsAttack: true,
+          snippet: "Melee Weapon Attack: +1 to hit. Hit: 1d6 - 2 bludgeoning damage.",
+        } as any,
+        {
+          id: 3,
+          entityTypeId: 1,
+          name: "Dagger",
+          componentId: 1,
+          componentTypeId: 1,
+          limitedUse: null,
+          displayAsAttack: true,
+        } as any,
+        {
+          id: 4,
+          entityTypeId: 1,
+          name: "Light Crossbow",
+          componentId: 1,
+          componentTypeId: 1,
+          limitedUse: null,
+          displayAsAttack: true,
+          snippet: "Ranged Weapon Attack: +4 to hit. Hit: 1d8 + 1 piercing damage.",
+        } as any,
+      ],
     },
     modifiers: {
       class: [
         { id: "save-con", type: "proficiency", subType: "constitution-saving-throws", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Constitution Saving Throws", componentId: 1, componentTypeId: 1 },
         { id: "save-cha", type: "proficiency", subType: "charisma-saving-throws", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Charisma Saving Throws", componentId: 1, componentTypeId: 1 },
         { id: "arcana", type: "proficiency", subType: "arcana", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Arcana", componentId: 1, componentTypeId: 1 },
+        { id: "psychic", type: "resistance", subType: "psychic", value: null, friendlyTypeName: "Resistance", friendlySubtypeName: "Psychic", componentId: 1, componentTypeId: 1 },
+        { id: "charm-fear", type: "advantage", subType: "saving-throws-against-charmed-and-frightened", value: null, friendlyTypeName: "Advantage", friendlySubtypeName: "Saving Throws Against Being Charmed and Frightened", componentId: 1, componentTypeId: 1 },
       ],
       race: [
         { id: "tool", type: "proficiency", subType: "disguise-kit", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Disguise Kit", componentId: 1, componentTypeId: 1 },
         { id: "dagger", type: "proficiency", subType: "dagger", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Dagger", componentId: 1, componentTypeId: 1 },
+        { id: "crossbow-light", type: "proficiency", subType: "light-crossbows", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Light Crossbows", componentId: 1, componentTypeId: 1 },
       ],
     },
     campaign: { id: 1, name: "Test Campaign" },
@@ -225,15 +274,21 @@ describe("character sheet PDF", () => {
     expect(data.skills.find((skill) => skill.name === "Arcana")).toMatchObject({ total: "+5", proficient: true });
     expect(data.spellcasting).toEqual({ ability: "CHA", saveDc: "15", attackBonus: "+7" });
     expect(data.proficiencies).toMatchObject({
-      weapons: ["Dagger"],
+      weapons: ["Dagger", "Light Crossbows"],
       tools: ["Disguise Kit"],
     });
+    expect(data.defenses).toEqual([
+      { label: "Resistances", value: "Psychic" },
+      { label: "Save Advantages", value: "Charmed, Frightened" },
+    ]);
     expect(data.actionRows).toEqual([
       { name: "Mind Sliver", bonus: "", damage: "2d6 psychic", notes: "DC 15" },
+      { name: "Quarterstaff", bonus: "+1", damage: "1d6-2 bludgeoning", notes: "" },
       { name: "Dagger", bonus: "+4", damage: "1d4+1 piercing", notes: "Prof." },
+      { name: "Crossbow, Light", bonus: "+4", damage: "1d8+1 piercing", notes: "Prof." },
     ]);
     expect(data.spellsByLevel).toEqual([
-      { level: 0, label: "Cantrips", spells: [{ level: 0, name: "Mind Sliver", detail: "Cantrip Enchantment - V" }] },
+      { level: 0, label: "Cantrips", spells: [{ level: 0, name: "Mind Sliver", detail: "Cantrip Enchantment - Action - Ranged 60 ft - 2d6 psychic - 1 Round - V - The target takes 1d6 psychic damage." }] },
       { level: 3, label: "Level 3", spells: [{ level: 3, name: "Sending", detail: "Level 3 Evocation - V/S/M" }] },
     ]);
   });

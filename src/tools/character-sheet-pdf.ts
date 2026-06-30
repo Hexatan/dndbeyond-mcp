@@ -98,6 +98,7 @@ export interface CharacterSheetData {
   actionRows: ActionRow[];
   hitDice: string[];
   resources: string[];
+  defenses: SheetField[];
   proficiencies: ProficiencyCategories;
   features: NamedDetail[];
   racialTraits: NamedDetail[];
@@ -117,6 +118,14 @@ const PAGE_H = 2160 / 229 * 72;
 const MARGIN = 8;
 const GAP = 6;
 const BOX_GAP = 8;
+const DDB_WEAPON_ENTITY_TYPE_ID = 1782728300;
+const WRITING_LINE_SPACING = 16;
+const BOX_TEXT_TOP_PAD = 30;
+const MIN_TEXT_TO_LINE_GAP = 16;
+const PROFICIENCY_LABEL_TO_VALUE_GAP = 9;
+const PROFICIENCY_VALUE_LINE_H = 8;
+const PROFICIENCY_SECTION_GAP = 8;
+const DETAIL_ROW_H = 11;
 const BLACK = "black";
 const MID = "mid";
 const LIGHT = "light";
@@ -192,6 +201,23 @@ const LANGUAGE_SUBTYPES = new Set([
   "sylvan", "undercommon", "thieves-cant", "druidic", "aarakocra", "auran",
   "aquan", "ignan", "terran",
 ]);
+const SAVE_ADVANTAGE_CONDITIONS: Record<string, string> = {
+  blinded: "Blinded",
+  charmed: "Charmed",
+  deafened: "Deafened",
+  frightened: "Frightened",
+  fear: "Frightened",
+  grappled: "Grappled",
+  incapacitated: "Incapacitated",
+  invisible: "Invisible",
+  paralyzed: "Paralyzed",
+  petrified: "Petrified",
+  poisoned: "Poisoned",
+  prone: "Prone",
+  restrained: "Restrained",
+  stunned: "Stunned",
+  unconscious: "Unconscious",
+};
 
 const HIT_DIE_MAP: Record<string, string> = {
   Barbarian: "d12",
@@ -447,7 +473,7 @@ class PdfElements {
     }
   }
 
-  textBlock(x: number, y: number, w: number, h: number, value: string, size = 7.2, lineHeight = 14, color?: string | PdfColor | null): void {
+  textBlock(x: number, y: number, w: number, h: number, value: string, size = 7.2, lineHeight = 14, color?: string | PdfColor | null): number {
     const font = this.fonts.regular;
     const fontSize = this.fontSize(size);
     const maxWidth = this.w(w);
@@ -468,6 +494,17 @@ class PdfElements {
       });
       this.text(x, baseline, line, size, false, color ?? BLACK);
     }
+    return visible.length;
+  }
+
+  wrappedText(x: number, y: number, w: number, value: string, size = 7.2, lineHeight = 10, bold = false, color?: string | PdfColor | null): number {
+    const font = bold ? this.fonts.bold : this.fonts.regular;
+    const fontSize = this.fontSize(size);
+    const lines = wrapText(cleanPdfText(value), font, fontSize, this.w(w));
+    for (const [idx, line] of lines.entries()) {
+      this.text(x, y - idx * lineHeight, line, size, bold, color);
+    }
+    return lines.length;
   }
 
   fitText(x: number, y: number, w: number, value: string, size = 8, bold = false, color?: string | PdfColor | null): void {
@@ -570,12 +607,13 @@ export function extractCharacterSheetData(char: DdbCharacter): CharacterSheetDat
     saves: buildSaves(char, proficiencyBonus),
     skills: buildSkills(char, proficiencyBonus),
     spellcasting,
-    spellsByLevel: groupSpells(preparedSpells),
+    spellsByLevel: groupSpells(preparedSpells, level),
     spellSlots: (char.spellSlots ?? []).filter((slot) => slot.available > 0),
     pactMagic: char.pactMagic && char.pactMagic.available > 0 ? char.pactMagic : null,
     actionRows: buildActionRows(char, preparedSpells, spellcasting, proficiencyBonus),
     hitDice: buildHitDice(char),
     resources: buildResources(char),
+    defenses: buildDefenses(char),
     proficiencies,
     features: buildFeatures(char),
     racialTraits: (char.race.racialTraits ?? []).map((trait) => ({
@@ -733,7 +771,8 @@ function drawSavesSkills(pdf: PdfElements, data: CharacterSheetData): void {
   const profH = defensesY - BOX_GAP - profY;
 
   pdf.box(profX, defensesY, profW, defensesH, "Conditions / Defenses");
-  pdf.writingLines(profX, defensesY, profW, defensesH);
+  const defenseLines = pdf.textBlock(profX + 8, defensesY + 10, profW - 16, defensesH - 34, fieldsToText(data.defenses), 6.8);
+  pdf.writingLines(profX, defensesY, profW, defensesH, WRITING_LINE_SPACING, writingTopPad(defenseLines));
 
   pdf.box(profX, profY, profW, profH, "Proficiencies & Languages");
   drawProficiencyCategories(pdf, profX, profY, profW, profH, data.proficiencies);
@@ -828,28 +867,29 @@ function drawFeaturesPage(pdf: PdfElements, data: CharacterSheetData): void {
 
   const row1H = 200;
   const row1Y = topY - row1H;
-  pdf.box(MARGIN, row1Y, VIRTUAL_W - 2 * MARGIN, row1H, "Class & Species Features");
-  pdf.writingLines(MARGIN, row1Y, VIRTUAL_W - 2 * MARGIN, row1H);
-  drawDetailList(pdf, MARGIN + 8, row1Y + 10, VIRTUAL_W - 2 * MARGIN - 16, row1H - 34, [
+  const featureEntries = [
     ...data.features,
     ...data.racialTraits.map((trait) => ({ ...trait, name: `Species: ${trait.name}` })),
     ...data.feats.map((feat) => ({ ...feat, name: `Feat: ${feat.name}` })),
-  ]);
+  ];
+  pdf.box(MARGIN, row1Y, VIRTUAL_W - 2 * MARGIN, row1H, "Class & Species Features");
+  const featureRows = drawDetailList(pdf, MARGIN + 8, row1Y + 10, VIRTUAL_W - 2 * MARGIN - 16, row1H - 34, featureEntries);
+  pdf.writingLines(MARGIN, row1Y, VIRTUAL_W - 2 * MARGIN, row1H, WRITING_LINE_SPACING, writingTopPad(featureRows, DETAIL_ROW_H));
 
   const row2H = 208;
   const row2Y = row1Y - BOX_GAP - row2H;
   pdf.box(MARGIN, row2Y, leftW, row2H, "Equipment");
-  pdf.writingLines(MARGIN, row2Y, leftW, row2H);
-  pdf.textBlock(MARGIN + 8, row2Y + 10, leftW - 16, row2H - 34, data.equipment.join("\n"), 7.1);
+  const equipmentLines = pdf.textBlock(MARGIN + 8, row2Y + 10, leftW - 16, row2H - 34, data.equipment.join("\n"), 7.1);
+  pdf.writingLines(MARGIN, row2Y, leftW, row2H, WRITING_LINE_SPACING, writingTopPad(equipmentLines));
 
   pdf.box(rightX, row2Y, rightW, row2H, "Personality, Ideals, Bonds, Flaws");
-  pdf.writingLines(rightX, row2Y, rightW, row2H);
-  pdf.textBlock(rightX + 8, row2Y + 10, rightW - 16, row2H - 34, fieldsToText(data.traits), 6.8);
+  const traitLines = pdf.textBlock(rightX + 8, row2Y + 10, rightW - 16, row2H - 34, fieldsToText(data.traits), 6.8);
+  pdf.writingLines(rightX, row2Y, rightW, row2H, WRITING_LINE_SPACING, writingTopPad(traitLines));
 
   const notesH = row2Y - BOX_GAP - bottomY;
   pdf.box(MARGIN, bottomY, VIRTUAL_W - 2 * MARGIN, notesH, "Campaign Notes");
-  pdf.writingLines(MARGIN, bottomY, VIRTUAL_W - 2 * MARGIN, notesH);
-  pdf.textBlock(MARGIN + 8, bottomY + 10, VIRTUAL_W - 2 * MARGIN - 16, notesH - 34, fieldsToText(data.notes), 6.8);
+  const noteLines = pdf.textBlock(MARGIN + 8, bottomY + 10, VIRTUAL_W - 2 * MARGIN - 16, notesH - 34, fieldsToText(data.notes), 6.8);
+  pdf.writingLines(MARGIN, bottomY, VIRTUAL_W - 2 * MARGIN, notesH, WRITING_LINE_SPACING, writingTopPad(noteLines));
 }
 
 function drawSpellPage(pdf: PdfElements, data: CharacterSheetData): void {
@@ -1035,12 +1075,12 @@ function drawRelationshipsPage(pdf: PdfElements): void {
 
 function spellBox(pdf: PdfElements, x: number, y: number, w: number, h: number, title: string, data: CharacterSheetData, levels: number[]): void {
   pdf.box(x, y, w, h, title);
-  pdf.writingLines(x, y, w, h);
   const text = data.spellsByLevel
     .filter((group) => levels.includes(group.level))
     .flatMap((group) => group.spells.map((spell) => `${spell.name} - ${spell.detail || group.label}`))
     .join("\n");
-  pdf.textBlock(x + 8, y + 10, w - 16, h - 34, text, 7.1);
+  const spellLines = pdf.textBlock(x + 8, y + 10, w - 16, h - 34, text, 6.5, 11);
+  pdf.writingLines(x, y, w, h, WRITING_LINE_SPACING, writingTopPad(spellLines, 11));
 }
 
 function labeledLine(pdf: PdfElements, x: number, y: number, w: number, label: string, value = ""): void {
@@ -1063,20 +1103,24 @@ function drawProficiencyCategories(
     ["Tools", categories.tools],
     ["Languages", categories.languages],
   ] as const;
-  const top = y + h - 39;
-  for (const [idx, [label, values]] of rows.entries()) {
-    const yy = top - idx * 26;
-    pdf.text(x + 8, yy + 8, label.toUpperCase(), 5.9, true, MID);
-    pdf.line(x + 8, yy, x + w - 8, yy, 0.35, LIGHT);
-    pdf.fitText(x + 8, yy + 3, w - 16, values.join(", "), 6.6);
+  let cursor = y + h - 30;
+  for (const [label, values] of rows) {
+    pdf.text(x + 8, cursor, label.toUpperCase(), 5.9, true, MID);
+    const value = values.join(", ");
+    const valueY = cursor - PROFICIENCY_LABEL_TO_VALUE_GAP;
+    const lineCount = value
+      ? pdf.wrappedText(x + 8, valueY, w - 16, value, 6.6, PROFICIENCY_VALUE_LINE_H)
+      : 1;
+    const lineY = valueY - (lineCount - 1) * PROFICIENCY_VALUE_LINE_H - MIN_TEXT_TO_LINE_GAP;
+    pdf.line(x + 8, lineY, x + w - 8, lineY, 0.35, LIGHT);
+    cursor = lineY - PROFICIENCY_SECTION_GAP;
   }
 }
 
-function drawDetailList(pdf: PdfElements, x: number, y: number, w: number, h: number, entries: NamedDetail[]): void {
-  const rowH = 11;
-  const maxRows = Math.floor((h - 6) / rowH);
+function drawDetailList(pdf: PdfElements, x: number, y: number, w: number, h: number, entries: NamedDetail[]): number {
+  const maxRows = Math.floor((h - 6) / DETAIL_ROW_H);
   for (const [idx, entry] of entries.slice(0, maxRows).entries()) {
-    const yy = y + h - 6 - idx * rowH;
+    const yy = y + h - 6 - idx * DETAIL_ROW_H;
     const name = entry.detail ? `${entry.name}:` : entry.name;
     pdf.fillRect(x - 8, yy - 2, w + 16, 10);
     pdf.fitText(x, yy, 132, name, 6.9, true);
@@ -1085,6 +1129,12 @@ function drawDetailList(pdf: PdfElements, x: number, y: number, w: number, h: nu
   if (entries.length > maxRows) {
     pdf.fitText(x, y + 2, w, `+${entries.length - maxRows} more`, 6.4, true, MID);
   }
+  return Math.min(entries.length, maxRows);
+}
+
+function writingTopPad(textLines: number, lineHeight = 14): number {
+  if (textLines <= 0) return 33;
+  return BOX_TEXT_TOP_PAD + (textLines - 1) * lineHeight + MIN_TEXT_TO_LINE_GAP;
 }
 
 function fieldsToText(fields: SheetField[]): string {
@@ -1183,6 +1233,57 @@ function buildProficiencies(char: DdbCharacter): ProficiencyCategories {
   };
 }
 
+function buildDefenses(char: DdbCharacter): SheetField[] {
+  const groups = new Map<string, Set<string>>([
+    ["Resistances", new Set<string>()],
+    ["Immunities", new Set<string>()],
+    ["Vulnerabilities", new Set<string>()],
+    ["Save Advantages", new Set<string>()],
+  ]);
+
+  for (const list of Object.values(char.modifiers)) {
+    if (!Array.isArray(list)) continue;
+    for (const mod of list) {
+      const label = defenseLabel(mod.type);
+      if (label) groups.get(label)?.add(defenseName(mod));
+      for (const name of saveAdvantageNames(mod)) {
+        groups.get("Save Advantages")?.add(name);
+      }
+    }
+  }
+
+  return [...groups.entries()]
+    .map(([label, values]) => ({ label, value: [...values].sort().join(", ") }))
+    .filter((field) => field.value);
+}
+
+function defenseLabel(type: string): string | null {
+  const normalized = type.toLowerCase();
+  if (normalized.includes("resistance")) return "Resistances";
+  if (normalized.includes("immunity")) return "Immunities";
+  if (normalized.includes("vulnerability")) return "Vulnerabilities";
+  return null;
+}
+
+function defenseName(mod: DdbModifier): string {
+  return (mod.friendlySubtypeName || titleCase(mod.subType.replace(/-/g, " ")))
+    .replace(/\s+damage$/i, "");
+}
+
+function saveAdvantageNames(mod: DdbModifier): string[] {
+  if (!mod.type.toLowerCase().includes("advantage")) return [];
+  const text = `${mod.subType} ${mod.friendlySubtypeName}`.toLowerCase();
+  const isSaveAdvantage = /\bsav(e|ing)\b/.test(text) || Object.keys(SAVE_ADVANTAGE_CONDITIONS).some((key) => text.includes(key));
+  if (!isSaveAdvantage) return [];
+
+  const found = Object.entries(SAVE_ADVANTAGE_CONDITIONS)
+    .filter(([key]) => text.includes(key))
+    .map(([, label]) => label);
+  if (found.length > 0) return [...new Set(found)];
+
+  return [defenseName(mod).replace(/^saving throws?\s*(against|vs\.?)?\s*/i, "")];
+}
+
 function buildFeatures(char: DdbCharacter): NamedDetail[] {
   const seen = new Set<string>();
   const features: NamedDetail[] = [];
@@ -1236,10 +1337,53 @@ function buildActionRows(
 
   const weapons = char.inventory
     .filter((item) => item.equipped && isWeapon(item))
-    .slice(0, 4)
     .map((item) => weaponActionRow(char, item, proficiencyBonus));
 
-  return [...cantrips, ...weapons];
+  return dedupeActionRows([...cantrips, ...buildAttackActionRows(char), ...weapons]).slice(0, 6);
+}
+
+function buildAttackActionRows(char: DdbCharacter): ActionRow[] {
+  const rows: ActionRow[] = [];
+  for (const list of Object.values(char.actions ?? {}) as DdbAction[][]) {
+    if (!Array.isArray(list)) continue;
+    for (const action of list) {
+      if (!looksLikeAttackAction(action)) continue;
+      rows.push({
+        name: action.name,
+        bonus: actionAttackBonus(action),
+        damage: actionDamage(action),
+        notes: actionNotes(action),
+      });
+    }
+  }
+  return rows;
+}
+
+function dedupeActionRows(rows: ActionRow[]): ActionRow[] {
+  const selected: ActionRow[] = [];
+
+  for (const row of rows) {
+    const aliases = weaponNameAliases(row.name);
+    const existingIndex = selected.findIndex((existing) => setsOverlap(aliases, weaponNameAliases(existing.name)));
+    if (existingIndex === -1) {
+      selected.push(row);
+      continue;
+    }
+
+    if (actionRowScore(row) > actionRowScore(selected[existingIndex])) {
+      selected[existingIndex] = row;
+    }
+  }
+
+  return selected;
+}
+
+function actionRowScore(row: ActionRow): number {
+  return (row.bonus ? 1 : 0) + (row.damage ? 2 : 0) + (row.notes ? 1 : 0);
+}
+
+function setsOverlap(a: Set<string>, b: Set<string>): boolean {
+  return [...a].some((value) => b.has(value));
 }
 
 function weaponActionRow(char: DdbCharacter, item: DdbInventoryItem, proficiencyBonus: number): ActionRow {
@@ -1261,13 +1405,70 @@ function weaponActionRow(char: DdbCharacter, item: DdbInventoryItem, proficiency
 }
 
 function isWeapon(item: DdbInventoryItem): boolean {
-  const definition = item.definition as DdbInventoryItem["definition"] & { filterType?: string | null };
+  const definition = item.definition as DdbInventoryItem["definition"] & { filterType?: string | null; entityTypeId?: number | null };
+  if (item.entityTypeId === DDB_WEAPON_ENTITY_TYPE_ID || definition.entityTypeId === DDB_WEAPON_ENTITY_TYPE_ID) return true;
   return `${definition.type ?? ""} ${definition.filterType ?? ""}`.toLowerCase().includes("weapon")
     || weaponFallback(definition.name) !== null;
 }
 
+function looksLikeAttackAction(action: DdbAction): boolean {
+  const record = action as DdbAction & Record<string, unknown>;
+  if (record.displayAsAttack === true || record.attackType != null || record.attackSubtype != null) return true;
+  if (numberValue(record.toHit) != null || numberValue(record.toHitBonus) != null || numberValue(record.fixedToHit) != null) return true;
+  if (actionDamage(action)) return true;
+  return /attack|to hit|\bdamage\b/i.test(actionText(action));
+}
+
+function actionAttackBonus(action: DdbAction): string {
+  const record = action as DdbAction & Record<string, unknown>;
+  const bonus = numberValue(record.toHit)
+    ?? numberValue(record.toHitBonus)
+    ?? numberValue(record.fixedToHit)
+    ?? numberValue(record.attackBonus);
+  if (bonus != null) return signed(bonus);
+  return actionText(action).match(/([+-]\d+)\s+to hit/i)?.[1] ?? "";
+}
+
+function actionDamage(action: DdbAction): string {
+  const record = action as DdbAction & Record<string, unknown>;
+  const damage = recordValue(record.damage);
+  const dice = stringValue(record.damageDice)
+    ?? stringValue(record.diceString)
+    ?? stringValue(damage?.diceString)
+    ?? stringValue(damage?.dice)
+    ?? diceFromParts(numberValue(record.diceCount), numberValue(record.diceValue))
+    ?? diceFromParts(numberValue(damage?.diceCount), numberValue(damage?.diceValue));
+  const type = stringValue(record.damageType)
+    ?? stringValue(damage?.damageType)
+    ?? stringValue(recordValue(record.damageTypeDefinition)?.name)
+    ?? stringValue(recordValue(damage?.damageTypeDefinition)?.name)
+    ?? "";
+
+  if (dice) return `${addDamageModifier(dice, numberValue(record.value) ?? numberValue(damage?.fixedValue) ?? 0)} ${type}`.trim();
+
+  const match = actionText(action).match(/(\d+d\d+(?:\s*[+-]\s*\d+)?)\s+([a-z]+)\s+damage/i);
+  return match ? `${match[1].replace(/\s+/g, "")} ${match[2].toLowerCase()}` : "";
+}
+
+function actionNotes(action: DdbAction): string {
+  const record = action as DdbAction & Record<string, unknown>;
+  if (record.isProficient === true) return "Prof.";
+  return "";
+}
+
+function actionText(action: DdbAction): string {
+  const record = action as DdbAction & Record<string, unknown>;
+  return stripHtml([
+    stringValue(record.snippet),
+    stringValue(record.description),
+    stringValue(record.attackSubtype),
+  ].filter(Boolean).join(" "));
+}
+
 function isWeaponProficient(char: DdbCharacter, item: DdbInventoryItem, group?: "simple" | "martial"): boolean {
-  const weaponName = normalizeWeaponName(item.definition.name);
+  if (item.isProficient === true) return true;
+
+  const weaponNames = weaponNameAliases(item.definition.name);
   const groupSubtype = group === "simple" ? "simple-weapons" : group === "martial" ? "martial-weapons" : "";
 
   for (const list of Object.values(char.modifiers)) {
@@ -1275,14 +1476,29 @@ function isWeaponProficient(char: DdbCharacter, item: DdbInventoryItem, group?: 
     for (const mod of list) {
       if (mod.type !== "proficiency") continue;
       if (groupSubtype && mod.subType === groupSubtype) return true;
-      const subtype = normalizeWeaponName(mod.subType);
-      const friendly = normalizeWeaponName(mod.friendlySubtypeName);
-      if (subtype === weaponName || friendly === weaponName) return true;
-      if (subtype === `${weaponName}s` || friendly === `${weaponName}s`) return true;
+      const proficiencyNames = new Set([
+        ...weaponNameAliases(mod.subType),
+        ...weaponNameAliases(mod.friendlySubtypeName),
+      ]);
+      if ([...weaponNames].some((name) => proficiencyNames.has(name))) return true;
     }
   }
 
   return false;
+}
+
+function weaponNameAliases(value: string): Set<string> {
+  const normalized = normalizeWeaponName(value);
+  const aliases = new Set([normalized]);
+  const withoutComma = normalized.replace(/,/g, "");
+  aliases.add(withoutComma);
+
+  const commaParts = normalized.split(",").map((part) => part.trim()).filter(Boolean);
+  if (commaParts.length === 2) {
+    aliases.add(`${commaParts[1]} ${commaParts[0]}`);
+  }
+
+  return aliases;
 }
 
 function inferWeaponAbility(item: DdbInventoryItem): "str" | "dex" | "finesse" {
@@ -1361,7 +1577,7 @@ function computeSpellcasting(char: DdbCharacter, spells: DdbSpell[]): CharacterS
   };
 }
 
-function groupSpells(spells: DdbSpell[]): CharacterSheetData["spellsByLevel"] {
+function groupSpells(spells: DdbSpell[], characterLevel: number): CharacterSheetData["spellsByLevel"] {
   const groups = new Map<number, SpellEntry[]>();
   for (const spell of spells) {
     const level = spell.definition.level;
@@ -1369,7 +1585,7 @@ function groupSpells(spells: DdbSpell[]): CharacterSheetData["spellsByLevel"] {
     group.push({
       level,
       name: spell.definition.name,
-      detail: spellDetail(spell),
+      detail: spellDetail(spell, characterLevel),
     });
     groups.set(level, group);
   }
@@ -1399,7 +1615,7 @@ function getSpellcastingAbilityId(cls: DdbClass): number | null {
     ?? null;
 }
 
-function spellDetail(spell: DdbSpell): string {
+function spellDetail(spell: DdbSpell, characterLevel: number): string {
   const level = spell.definition.level === 0 ? "Cantrip" : `Level ${spell.definition.level}`;
   const components = (spell.definition.components ?? [])
     .map((component) => ({ 1: "V", 2: "S", 3: "M" })[component])
@@ -1407,11 +1623,66 @@ function spellDetail(spell: DdbSpell): string {
     .join("/");
   const notes = [
     `${level} ${spell.definition.school}`,
+    spellActivation(spell),
+    spellShape(spell),
+    spellDamage(spell, characterLevel),
+    spellDuration(spell),
     components,
     spell.definition.concentration ? "Conc." : "",
     spell.definition.ritual ? "Ritual" : "",
+    shortDetail(spell.definition.description, 70),
   ].filter(Boolean);
   return notes.join(" - ");
+}
+
+function spellActivation(spell: DdbSpell): string {
+  const activation = spell.definition.activation;
+  if (!activation) return "";
+  const label = ({ 1: "Action", 3: "Bonus", 6: "Reaction" } as Record<number, string>)[activation.activationType] ?? "Cast";
+  return activation.activationTime === 1 ? label : `${activation.activationTime} ${label}`;
+}
+
+function spellShape(spell: DdbSpell): string {
+  return [
+    spellAttackType(spell),
+    spellSaveType(spell),
+    spellRange(spell),
+  ].filter(Boolean).join(" ");
+}
+
+function spellAttackType(spell: DdbSpell): string {
+  const definition = spell.definition as DdbSpell["definition"] & Record<string, unknown>;
+  const attackType = definition.attackType;
+  const label = typeof attackType === "number"
+    ? ({ 1: "Melee", 2: "Ranged" } as Record<number, string>)[attackType]
+    : stringValue(attackType) ?? stringValue(recordValue(definition.attackTypeDefinition)?.name);
+  if (label) return `${titleCase(label)} atk`;
+  return spellLooksLikeAttack(spell) ? "Spell atk" : "";
+}
+
+function spellSaveType(spell: DdbSpell): string {
+  const definition = spell.definition as DdbSpell["definition"] & Record<string, unknown>;
+  const abilityId = numberValue(definition.saveDcAbilityId) ?? numberValue(recordValue(definition.saveDcAbility)?.id);
+  const label = abilityId ? ABILITY_NAMES[abilityId - 1] : stringValue(definition.saveDcAbilityName) ?? stringValue(recordValue(definition.saveDcAbility)?.name);
+  return label ? `${label} save` : "";
+}
+
+function spellRange(spell: DdbSpell): string {
+  const range = spell.definition.range;
+  if (!range) return "";
+  const distance = range.rangeValue == null ? "" : `${range.rangeValue} ft`;
+  const aoe = [range.aoeValue == null ? "" : `${range.aoeValue} ft`, range.aoeType ?? ""].filter(Boolean).join(" ");
+  return [titleCase(range.origin.replace(/-/g, " ")), distance, aoe].filter(Boolean).join(" ");
+}
+
+function spellDuration(spell: DdbSpell): string {
+  const duration = spell.definition.duration;
+  if (!duration) return "";
+  if (duration.durationType === "Instantaneous") return "Instant";
+  if (duration.durationInterval != null && duration.durationUnit) {
+    return `${duration.durationInterval} ${duration.durationUnit}`;
+  }
+  return duration.durationType === "Concentration" ? "Conc." : duration.durationType;
 }
 
 function hasModifierBySubType(modifiers: Record<string, DdbModifier[]>, subType: string, type: string): boolean {
