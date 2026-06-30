@@ -5,6 +5,7 @@ import type { DdbCharacter } from "../types/character.js";
 import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
 import { HttpError } from "../resilience/index.js";
 import { ABILITY_NAMES, calculateAbilityModifier, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc } from "../utils/character-calculations.js";
+import { formatListedCharacter, getOwnedCharacterList } from "../utils/character-list.js";
 
 function formatAbilityScores(char: DdbCharacter): string {
   return ABILITY_NAMES.map((name, idx) => {
@@ -126,6 +127,31 @@ export function registerCharacterResources(server: McpServer, client: DdbClient)
     },
     async () => {
       try {
+        const ownedCharacters = await getOwnedCharacterList(client);
+        if (ownedCharacters !== null) {
+          if (ownedCharacters.length === 0) {
+            return {
+              contents: [
+                {
+                  uri: "dndbeyond://characters",
+                  text: "No characters found.",
+                  mimeType: "text/plain",
+                },
+              ],
+            };
+          }
+
+          return {
+            contents: [
+              {
+                uri: "dndbeyond://characters",
+                text: `Characters:\n${ownedCharacters.map(formatListedCharacter).join("\n")}`,
+                mimeType: "text/plain",
+              },
+            ],
+          };
+        }
+
         const campaignsResponse = await client.get<DdbCampaign[]>(
           ENDPOINTS.campaign.list(),
           "campaigns",

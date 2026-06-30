@@ -14,6 +14,7 @@ import type {
 import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
 import { fuzzyMatch, levenshteinDistance } from "../utils/fuzzy-match.js";
 import { ABILITY_NAMES, ABILITY_SUBTYPE_MAP, calculateAbilityModifier, sumModifierBonuses, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc } from "../utils/character-calculations.js";
+import { formatListedCharacter, getOwnedCharacterList } from "../utils/character-list.js";
 
 interface GetCharacterParams {
   characterId?: number;
@@ -919,24 +920,31 @@ function formatCharacter(char: DdbCharacter): string {
 }
 
 async function findCharacterByName(client: DdbClient, name: string): Promise<number | null> {
-  const campaignsResponse = await client.get<DdbCampaign[]>(
-    ENDPOINTS.campaign.list(),
-    "campaigns",
-    300_000
-  );
+  const ownedCharacters = await getOwnedCharacterList(client);
+  let allCharacters: Array<{ id: number; name: string }>;
 
-  // Fetch characters from each campaign using the new endpoint
-  const allCharacters: Array<{ id: number; name: string }> = [];
-  for (const campaign of campaignsResponse) {
-    const characters = await client.get<DdbCampaignCharacter2[]>(
-      ENDPOINTS.campaign.characters(campaign.id),
-      `campaign:${campaign.id}:characters`,
+  if (ownedCharacters !== null) {
+    allCharacters = ownedCharacters.map((char) => ({ id: char.id, name: char.name }));
+  } else {
+    const campaignsResponse = await client.get<DdbCampaign[]>(
+      ENDPOINTS.campaign.list(),
+      "campaigns",
       300_000
     );
-    allCharacters.push(...characters.map((char) => ({
-      id: char.id,
-      name: char.name,
-    })));
+
+    // Fetch characters from each campaign using the new endpoint
+    allCharacters = [];
+    for (const campaign of campaignsResponse) {
+      const characters = await client.get<DdbCampaignCharacter2[]>(
+        ENDPOINTS.campaign.characters(campaign.id),
+        `campaign:${campaign.id}:characters`,
+        300_000
+      );
+      allCharacters.push(...characters.map((char) => ({
+        id: char.id,
+        name: char.name,
+      })));
+    }
   }
 
   // 1. Exact match (case-insensitive)
@@ -1010,6 +1018,29 @@ export async function getCharacter(
 export async function listCharacters(
   client: DdbClient
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  const ownedCharacters = await getOwnedCharacterList(client);
+  if (ownedCharacters !== null) {
+    if (ownedCharacters.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "No characters found.",
+          },
+        ],
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Characters:\n${ownedCharacters.map(formatListedCharacter).join("\n")}`,
+        },
+      ],
+    };
+  }
+
   const campaignsResponse = await client.get<DdbCampaign[]>(
     ENDPOINTS.campaign.list(),
     "campaigns",
