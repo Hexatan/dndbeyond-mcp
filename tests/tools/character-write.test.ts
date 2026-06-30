@@ -144,6 +144,7 @@ describe("updateSpellSlots", () => {
 
   beforeEach(() => {
     mockClient = {
+      get: vi.fn().mockResolvedValue(mockCharacter),
       put: vi.fn().mockResolvedValue({}),
     } as unknown as DdbClient;
   });
@@ -287,15 +288,15 @@ describe("updateCurrency", () => {
     });
 
     expect(mockClient.put).toHaveBeenCalledWith(
-      expect.stringContaining("/character/v5/character/123/inventory/currency"),
-      { gp: 150 },
+      expect.stringContaining("/character/v5/inventory/currency/gold"),
+      { characterId: 123, amount: 150 },
       ["character:123"]
     );
     expect(result.content[0].text).toContain("Set GP to 150");
   });
 
-  it("should update all currency types", async () => {
-    const currencies = ["cp", "sp", "ep", "gp", "pp"] as const;
+  it("should use legacy currency endpoint for non-gold coins", async () => {
+    const currencies = ["cp", "sp", "ep", "pp"] as const;
 
     for (const currency of currencies) {
       await updateCurrency(mockClient, {

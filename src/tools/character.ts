@@ -7,9 +7,11 @@ import type {
   DdbModifier,
   DdbSpell,
   DdbFeat,
+  DdbClass,
   DdbClassFeature,
   DdbRacialTrait,
   DdbInventoryItem,
+  DdbMovementSpeeds,
 } from "../types/character.js";
 import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
 import { fuzzyMatch, levenshteinDistance } from "../utils/fuzzy-match.js";
@@ -327,14 +329,8 @@ function formatSpellcasting(char: DdbCharacter): string {
 
   if (allSpells.length === 0) return StringUtils.EMPTY;
 
-  const SPELLCASTING_ABILITY: Record<string, number> = {
-    "Wizard": 4, "Artificer": 4,  // INT
-    "Sorcerer": 6, "Warlock": 6, "Bard": 6, "Paladin": 6,  // CHA
-    "Cleric": 5, "Druid": 5, "Ranger": 5,  // WIS
-  };
-
   const profBonus = calculateProficiencyBonus(computeLevel(char));
-  const spellcastingClasses = char.classes.filter(cls => SPELLCASTING_ABILITY[cls.definition.name]);
+  const spellcastingClasses = char.classes.filter(cls => getSpellcastingAbilityId(cls) !== null);
 
   if (spellcastingClasses.length === 0) {
     // Fallback to WIS if no known spellcasting class
@@ -346,7 +342,7 @@ function formatSpellcasting(char: DdbCharacter): string {
   }
 
   const dcStrings = spellcastingClasses.map(cls => {
-    const abilityId = SPELLCASTING_ABILITY[cls.definition.name] ?? 5;
+    const abilityId = getSpellcastingAbilityId(cls) ?? 5;
     const abilityMod = getAbilityModNumeric(char, abilityId);
     const spellSaveDC = 8 + profBonus + abilityMod;
     const spellAttack = profBonus + abilityMod;
@@ -359,6 +355,25 @@ function formatSpellcasting(char: DdbCharacter): string {
   });
 
   return dcStrings.join(" | ");
+}
+
+const FALLBACK_SPELLCASTING_ABILITY: Record<string, number> = {
+  Wizard: 4,
+  Artificer: 4,
+  Cleric: 5,
+  Druid: 5,
+  Ranger: 5,
+  Bard: 6,
+  Paladin: 6,
+  Sorcerer: 6,
+  Warlock: 6,
+};
+
+function getSpellcastingAbilityId(cls: DdbClass): number | null {
+  return cls.definition.spellCastingAbilityId
+    ?? cls.spellCastingAbilityId
+    ?? FALLBACK_SPELLCASTING_ABILITY[cls.definition.name]
+    ?? null;
 }
 
 function formatLimitedUseResources(char: DdbCharacter): string {
@@ -433,16 +448,56 @@ function formatRacialTraitNames(char: DdbCharacter): string {
 }
 
 function formatSpeed(char: DdbCharacter): string {
-  // Base walking speed for most races is 30 ft
-  let baseSpeed = 30;
+  const speeds: DdbMovementSpeeds = {
+    walk: 30,
+    ...extractSpeeds(char),
+  };
 
-  // Check modifiers for speed bonuses
-  let speedBonus = sumModifierBonuses(char.modifiers, "speed");
-  speedBonus += sumModifierBonuses(char.modifiers, "unarmored-movement");
-  speedBonus += sumModifierBonuses(char.modifiers, "innate-speed-walking");
+  speeds.walk = (speeds.walk ?? 30)
+    + sumModifierBonuses(char.modifiers, "speed")
+    + sumModifierBonuses(char.modifiers, "unarmored-movement")
+    + sumModifierBonuses(char.modifiers, "innate-speed-walking")
+    + sumModifierBonuses(char.modifiers, "walking-speed");
+  speeds.fly = addSpeedBonus(char, speeds.fly, "innate-speed-flying", "flying-speed");
+  speeds.swim = addSpeedBonus(char, speeds.swim, "innate-speed-swimming", "swimming-speed");
+  speeds.climb = addSpeedBonus(char, speeds.climb, "innate-speed-climbing", "climbing-speed");
+  speeds.burrow = addSpeedBonus(char, speeds.burrow, "innate-speed-burrowing", "burrowing-speed");
 
-  const totalSpeed = baseSpeed + speedBonus;
-  return `Speed: ${totalSpeed} ft`;
+  const parts = [
+    formatSpeedPart("walk", speeds.walk),
+    formatSpeedPart("fly", speeds.fly),
+    formatSpeedPart("swim", speeds.swim),
+    formatSpeedPart("climb", speeds.climb),
+    formatSpeedPart("burrow", speeds.burrow),
+  ].filter((part): part is string => Boolean(part));
+
+  return `Speed: ${parts.join(", ")}`;
+}
+
+function extractSpeeds(char: DdbCharacter): DdbMovementSpeeds {
+  return normalizeSpeeds(char.weightSpeeds?.normal)
+    ?? normalizeSpeeds(char.speeds)
+    ?? normalizeSpeeds(char.speed)
+    ?? normalizeSpeeds(char.race.weightSpeeds?.normal)
+    ?? normalizeSpeeds(char.race.speed)
+    ?? {};
+}
+
+function normalizeSpeeds(value: DdbMovementSpeeds | number | undefined): DdbMovementSpeeds | null {
+  if (typeof value === "number") return { walk: value };
+  if (!value) return null;
+  return value;
+}
+
+function addSpeedBonus(char: DdbCharacter, base: number | null | undefined, ...subTypes: string[]): number | null | undefined {
+  const bonus = subTypes.reduce((sum, subType) => sum + sumModifierBonuses(char.modifiers, subType), 0);
+  if (base == null && bonus === 0) return base;
+  return (base ?? 0) + bonus;
+}
+
+function formatSpeedPart(label: string, value: number | null | undefined): string | null {
+  if (!value || value <= 0) return null;
+  return label === "walk" ? `${value} ft` : `${label} ${value} ft`;
 }
 
 function formatSpellSlots(char: DdbCharacter): string {
@@ -1467,11 +1522,19 @@ export async function updateCurrency(
   }
 
   try {
-    await client.put(
-      ENDPOINTS.character.updateCurrency(params.characterId),
-      { [params.currency]: finalAmount },
-      [`character:${params.characterId}`]
-    );
+    if (params.currency === "gp") {
+      await client.put(
+        ENDPOINTS.character.inventory.setGold(),
+        { characterId: params.characterId, amount: finalAmount },
+        [`character:${params.characterId}`]
+      );
+    } else {
+      await client.put(
+        ENDPOINTS.character.updateCurrency(params.characterId),
+        { [params.currency]: finalAmount },
+        [`character:${params.characterId}`]
+      );
+    }
 
     return {
       content: [{ type: "text", text: `${description}.` }],

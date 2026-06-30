@@ -43,6 +43,7 @@ import {
   setGold,
   updateDescription,
 } from "./tools/character.js";
+import { generateCharacterSheetPdf } from "./tools/character-sheet-pdf.js";
 import { listCampaigns, getCampaignCharacters } from "./tools/campaign.js";
 import {
   searchSpells,
@@ -128,6 +129,28 @@ export async function startServer(): Promise<void> {
     "List all characters, including characters not assigned to a campaign",
     {},
     async () => listCharacters(client)
+  );
+
+  server.tool(
+    "generate_character_sheet_pdf",
+    "Generate an 8-page reMarkable-friendly PDF character sheet from a D&D Beyond character. Returns an embedded application/pdf resource with base64 PDF bytes.",
+    {
+      characterId: z.coerce.number().optional().describe("The character ID"),
+      characterName: z
+        .string()
+        .optional()
+        .describe("The character name (case-insensitive search)"),
+      theme: z
+        .enum(["light", "color", "inverted"])
+        .optional()
+        .describe("PDF theme: light (default), color, or inverted"),
+    },
+    async (params) =>
+      generateCharacterSheetPdf(client, {
+        characterId: params.characterId,
+        characterName: params.characterName,
+        theme: params.theme,
+      })
   );
 
   server.tool(
@@ -221,7 +244,7 @@ export async function startServer(): Promise<void> {
 
   server.tool(
     "update_spell_slots",
-    "Update used spell slots for a specific spell level",
+    "Best-effort spell slot update. D&D Beyond currently returns 404 for this legacy endpoint on many accounts.",
     {
       characterId: z.coerce.number().describe("The character ID"),
       level: z.coerce.number().describe("Spell slot level (1-9)"),
@@ -237,7 +260,7 @@ export async function startServer(): Promise<void> {
 
   server.tool(
     "update_death_saves",
-    "Update death saving throw successes or failures",
+    "Best-effort death save update. D&D Beyond currently returns 404 for this legacy endpoint on many accounts.",
     {
       characterId: z.coerce.number().describe("The character ID"),
       type: z
@@ -255,7 +278,7 @@ export async function startServer(): Promise<void> {
 
   server.tool(
     "update_currency",
-    "Update a character's currency. Use 'delta' to add/spend (e.g., delta: 50 to add, delta: -10 to spend) or 'amount' to set an absolute value.",
+    "Update character currency. GP uses the current gold endpoint; other coin types are best-effort legacy updates. Use 'delta' to add/spend or 'amount' to set.",
     {
       characterId: z.coerce.number().describe("The character ID"),
       currency: z
@@ -300,7 +323,7 @@ export async function startServer(): Promise<void> {
 
   server.tool(
     "update_pact_magic",
-    "Update used pact magic slots for a Warlock",
+    "Best-effort pact magic slot update. D&D Beyond currently returns 404 for this legacy endpoint on many accounts.",
     {
       characterId: z.coerce.number().describe("The character ID"),
       used: z.coerce.number().describe("Number of pact magic slots used"),
@@ -338,7 +361,7 @@ export async function startServer(): Promise<void> {
 
   server.tool(
     "cast_spell",
-    "Cast a spell and automatically decrement the appropriate spell slot or pact magic slot. Supports upcasting.",
+    "Best-effort spell casting tracker. Cantrips are local only; slot and pact-magic decrements depend on legacy endpoints that may return 404.",
     {
       characterId: z.coerce.number().describe("The character ID"),
       spellName: z.string().describe("Name of the spell to cast"),
@@ -657,9 +680,11 @@ export async function startServer(): Promise<void> {
   // Register campaign tools
   server.tool(
     "list_campaigns",
-    "List all active campaigns with DM and player count",
-    {},
-    async () => listCampaigns(client)
+    "List campaigns with DM and player count. By default returns active campaigns; set includeAll to query D&D Beyond's broader user-campaigns endpoint.",
+    {
+      includeAll: z.boolean().optional().describe("Use the broader user-campaigns endpoint instead of active-campaigns"),
+    },
+    async (params) => listCampaigns(client, params.includeAll)
   );
 
   server.tool(
@@ -667,10 +692,12 @@ export async function startServer(): Promise<void> {
     "Get the party roster for a specific campaign",
     {
       campaignId: z.coerce.number().describe("The campaign ID"),
+      includeAll: z.boolean().optional().describe("Look up the campaign through user-campaigns instead of active-campaigns"),
     },
     async (params) =>
       getCampaignCharacters(client, {
         campaignId: params.campaignId,
+        includeAll: params.includeAll,
       })
   );
 
