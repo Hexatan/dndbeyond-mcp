@@ -1,8 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { getCharacter, listCharacters } from "../../src/tools/character.js";
 import type { DdbClient } from "../../src/api/client.js";
 import type { DdbCharacter } from "../../src/types/character.js";
-import type { DdbCampaign } from "../../src/types/api.js";
+import type { DdbCampaign, DdbCharacterListResponse } from "../../src/types/api.js";
+import { getUserId } from "../../src/api/auth.js";
+
+vi.mock("../../src/api/auth.js", () => ({ getUserId: vi.fn() }));
 
 // Extended mock character for testing detail levels
 function createDetailedMockCharacter(): DdbCharacter {
@@ -209,6 +212,56 @@ const mockCampaignCharacters = [
   { id: 12345, name: "Thorin Ironforge", userId: 2, userName: "player1", avatarUrl: "", characterStatus: 1, isAssigned: true },
 ];
 
+const mockCharacterListResponse: DdbCharacterListResponse = {
+  characterSlotLimit: null,
+  canUnlockCharacters: false,
+  characters: [
+    {
+      id: 12345,
+      level: 5,
+      name: "Thorin Ironforge",
+      status: 1,
+      statusSlug: "active",
+      isAssigned: true,
+      classDescription: "Fighter/Battle Master",
+      raceName: "Mountain Dwarf",
+      avatarUrl: "",
+      backdropUrl: "",
+      coverImageUrl: "",
+      characterSecondaryInfo: "Level 5 | Mountain Dwarf | Fighter/Battle Master",
+      campaignId: 999,
+      campaignName: "Lost Mines of Phandelver",
+      createdDate: 1,
+      lastModifiedDate: 1,
+      isReady: false,
+    },
+    {
+      id: 76821074,
+      level: 6,
+      name: "Neesk",
+      status: 1,
+      statusSlug: "active",
+      isAssigned: true,
+      classDescription: "Sorcerer/Aberrant Mind",
+      raceName: "Changeling",
+      avatarUrl: "",
+      backdropUrl: "",
+      coverImageUrl: "",
+      characterSecondaryInfo: "Level 6 | Changeling | Sorcerer/Aberrant Mind",
+      campaignId: null,
+      campaignName: null,
+      createdDate: 1,
+      lastModifiedDate: 1,
+      isReady: false,
+    },
+  ],
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(getUserId).mockResolvedValue(null);
+});
+
 describe("getCharacter", () => {
   it("should format character data correctly by ID with summary detail", async () => {
     const client = createMockClient();
@@ -263,6 +316,27 @@ describe("getCharacter", () => {
 
     expect(result.content).toHaveLength(1);
     expect(result.content[0].text).toBe("Either characterId or characterName must be provided.");
+  });
+
+  it("should find owned characters that are not in campaigns by name", async () => {
+    const client = createMockClient();
+    const neesk = {
+      ...mockCharacter,
+      id: 76821074,
+      name: "Neesk",
+      race: { ...mockCharacter.race, fullName: "Changeling" },
+      campaign: null,
+    };
+    vi.mocked(getUserId).mockResolvedValue(110164516);
+    vi.mocked(client.get)
+      .mockResolvedValueOnce(mockCharacterListResponse)
+      .mockResolvedValueOnce(neesk);
+
+    const result = await getCharacter(client, { characterName: "Neesk", detail: "summary" });
+
+    expect(result.content[0].text).toContain("Name: Neesk");
+    expect(result.content[0].text).toContain("Race: Changeling");
+    expect(vi.mocked(client.get).mock.calls[0][0]).toContain("characters/list?userId=110164516");
   });
 });
 
@@ -403,6 +477,20 @@ describe("getCharacter with detail levels", () => {
 });
 
 describe("listCharacters", () => {
+  it("should list owned characters including characters without campaigns", async () => {
+    const client = createMockClient();
+    vi.mocked(getUserId).mockResolvedValue(110164516);
+    vi.mocked(client.get).mockResolvedValueOnce(mockCharacterListResponse);
+
+    const result = await listCharacters(client);
+
+    expect(result.content).toHaveLength(1);
+    const text = result.content[0].text;
+    expect(text).toContain("ID: 12345 | Thorin Ironforge - Mountain Dwarf Fighter/Battle Master (Level 5) - Lost Mines of Phandelver");
+    expect(text).toContain("ID: 76821074 | Neesk - Changeling Sorcerer/Aberrant Mind (Level 6) - No campaign");
+    expect(client.get).toHaveBeenCalledTimes(1);
+  });
+
   it("should return formatted list of characters", async () => {
     const client = createMockClient();
     vi.mocked(client.get)

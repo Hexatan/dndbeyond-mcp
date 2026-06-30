@@ -1,9 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { registerCharacterResources } from "../../src/resources/character.js";
 import type { DdbClient } from "../../src/api/client.js";
 import type { DdbCharacter } from "../../src/types/character.js";
-import type { DdbCampaign } from "../../src/types/api.js";
+import type { DdbCampaign, DdbCharacterListResponse } from "../../src/types/api.js";
 import { HttpError } from "../../src/resilience/index.js";
+import { getUserId } from "../../src/api/auth.js";
+
+vi.mock("../../src/api/auth.js", () => ({ getUserId: vi.fn() }));
 
 function createMockClient(): DdbClient {
   return {
@@ -113,6 +116,32 @@ const mockCampaignCharacters = [
   },
 ];
 
+const mockCharacterListResponse: DdbCharacterListResponse = {
+  characterSlotLimit: null,
+  canUnlockCharacters: false,
+  characters: [
+    {
+      id: 76821074,
+      level: 6,
+      name: "Neesk",
+      status: 1,
+      statusSlug: "active",
+      isAssigned: true,
+      classDescription: "Sorcerer/Aberrant Mind",
+      raceName: "Changeling",
+      avatarUrl: "",
+      backdropUrl: "",
+      coverImageUrl: "",
+      characterSecondaryInfo: "Level 6 | Changeling | Sorcerer/Aberrant Mind",
+      campaignId: null,
+      campaignName: null,
+      createdDate: 1,
+      lastModifiedDate: 1,
+      isReady: false,
+    },
+  ],
+};
+
 // registerCharacterResources calls server.resource(name, uri, opts, handler)
 function createMockServer() {
   const handlers: Record<string, Function> = {};
@@ -125,6 +154,11 @@ function createMockServer() {
 }
 
 describe("Character Resources", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getUserId).mockResolvedValue(null);
+  });
+
   it("should format character sheet with valid ID", async () => {
     const mockClient = createMockClient();
     vi.mocked(mockClient.get).mockResolvedValue(mockCharacter);
@@ -189,6 +223,21 @@ describe("Character Resources", () => {
     expect(text).toContain("Thorin Ironforge");
     expect(text).toContain("Mountain Dwarf");
     expect(text).toContain("Fighter");
+  });
+
+  it("should include owned characters without campaigns in characters list", async () => {
+    const mockClient = createMockClient();
+    vi.mocked(getUserId).mockResolvedValue(110164516);
+    vi.mocked(mockClient.get).mockResolvedValueOnce(mockCharacterListResponse);
+
+    const { mockServer, handlers } = createMockServer();
+    registerCharacterResources(mockServer as any, mockClient);
+
+    const result = await handlers["D&D Beyond Characters"]();
+
+    expect(result.contents).toHaveLength(1);
+    expect(result.contents[0].text).toContain("ID: 76821074 | Neesk - Changeling Sorcerer/Aberrant Mind (Level 6) - No campaign");
+    expect(mockClient.get).toHaveBeenCalledTimes(1);
   });
 
   it("should handle HttpError in characters list", async () => {

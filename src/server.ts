@@ -125,7 +125,7 @@ export async function startServer(): Promise<void> {
 
   server.tool(
     "list_characters",
-    "List all characters across all campaigns",
+    "List all characters, including characters not assigned to a campaign",
     {},
     async () => listCharacters(client)
   );

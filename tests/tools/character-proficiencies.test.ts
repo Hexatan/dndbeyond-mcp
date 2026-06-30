@@ -1,8 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { getCharacter } from "../../src/tools/character.js";
 import type { DdbClient } from "../../src/api/client.js";
 import type { DdbCharacter } from "../../src/types/character.js";
 import type { DdbCampaign } from "../../src/types/api.js";
+import { getUserId } from "../../src/api/auth.js";
+
+vi.mock("../../src/api/auth.js", () => ({ getUserId: vi.fn() }));
 
 function createMockClient(): DdbClient {
   return {
@@ -103,6 +106,11 @@ function createCharacterWithProficiencies(): DdbCharacter {
 }
 
 describe("formatProficiencies in character sheet", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getUserId).mockResolvedValue(null);
+  });
+
   it("should display armor, weapon, tool, and language proficiencies", async () => {
     const client = createMockClient();
     const char = createCharacterWithProficiencies();

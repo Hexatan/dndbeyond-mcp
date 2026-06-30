@@ -1,0 +1,3 @@
+[mcp_servers.dndbeyond]
+command = "node"
+args = ["build/src/index.js"]
