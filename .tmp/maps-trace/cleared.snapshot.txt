@@ -1,0 +1,19 @@
+uid=20_0 RootWebArea "One-shot - D&D Beyond" url="https://www.dndbeyond.com/games/3999469"
+  uid=29_0 alert atomic live="assertive" relevant="additions text"
+  uid=29_1 button "Feedback - Show survey"
+  uid=29_2 button "Display Scene"
+  uid=29_3 button
+  uid=29_4 button
+  uid=29_5 button "Roll Dice"
+  uid=29_6 button "Game Log"
+  uid=29_7 button "Game Info"
+  uid=29_8 StaticText "No map selected!"
+  uid=29_9 button
+  uid=29_10 combobox expandable expanded haspopup="listbox" value="Select Map"
+  uid=29_11 group
+    uid=29_12 button "Open Map Browser"
+    uid=29_13 StaticText "Your added maps will be collected here"
+  uid=29_14 button "Create a Journal Entry" expandable
+  uid=29_15 button "Open Campaign Journal"
+  uid=29_16 button "EVERYONE"
+  uid=29_17 button

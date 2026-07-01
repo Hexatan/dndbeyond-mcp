@@ -93,6 +93,13 @@ After adding the configuration, restart Claude Desktop.
 - `list_campaigns` — Active campaigns by default; `includeAll` uses D&D Beyond's broader `user-campaigns` endpoint
 - `get_campaign_characters` — Party roster for a campaign; `includeAll` can resolve through `user-campaigns`
 
+### Encounter
+- `list_encounters` — Saved D&D Beyond encounters with pagination, IDs, party/monster counts, campaign, and combat state
+- `get_encounter_config` — Encounter count and D&D Beyond account limit
+- `get_encounter` — Encounter detail by ID or name, including players, monsters, groups, HP, initiative, and combat round/turn state
+- `update_encounter` — Update safe metadata fields (name, description, flavor text) via D&D Beyond's full-save endpoint
+- `delete_encounter` — Delete an encounter after confirming its exact name
+
 ### Reference
 - `search_spells` / `get_spell` — Spell lookup with filters; `get_spell` accepts optional `edition` (`2014`/`2024`)
 - `search_monsters` / `get_monster` — Monster stat blocks; supports `edition`, `page`, `showHomebrew`, and source book filtering

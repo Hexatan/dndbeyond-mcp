@@ -1,0 +1,11 @@
+uid=20_0 RootWebArea "One-shot - D&D Beyond" url="https://www.dndbeyond.com/games/3999469"
+  uid=27_0 dialog "Are you sure you want to remove "Mushroom Cave"? This will remove all modifications currently on the map, such as tokens, fog of war, and drawings." modal
+    uid=27_1 StaticText "Are you sure you want to remove"
+    uid=27_2 LineBreak "
+"
+    uid=27_3 StaticText """
+    uid=27_4 StaticText "Mushroom Cave"
+    uid=27_5 StaticText ""?"
+    uid=27_6 StaticText "This will remove all modifications currently on the map, such as tokens, fog of war, and drawings."
+    uid=27_7 button "Cancel" focusable focused
+    uid=27_8 button "Delete"

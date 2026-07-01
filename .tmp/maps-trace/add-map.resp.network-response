@@ -1,0 +1,2 @@
+0:{"a":"$@1","f":"","q":"","i":false,"b":"95QHbZg3_xzm_TEo3--RK"}
+1:{"PartitionKey":"game_3999469","SortKey":"scenarios","scenarios":[{"id":"d5f909c9-4b38-42a2-bdb2-7a0de30b6375","name":"Mushroom Cave","maps":[{"id":"fa31de26-ae3a-43fa-8efd-529f160805ba","imageKey":"official/maps/br/01-Mushroom-Cave.jpg","videoKey":"$undefined","tokenScale":0.04791666666666667,"imageDimensions":{"x":2880,"y":1800},"officialData":"$T0:2","name":"Mushroom Cave","description":""}]}],"activeScenarioId":"d5f909c9-4b38-42a2-bdb2-7a0de30b6375"}

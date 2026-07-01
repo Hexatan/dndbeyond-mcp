@@ -1,5 +1,6 @@
 export const DDB_CHARACTER_SERVICE = "https://character-service.dndbeyond.com";
 export const DDB_MONSTER_SERVICE = "https://monster-service.dndbeyond.com";
+export const DDB_ENCOUNTER_SERVICE = "https://encounter-service.dndbeyond.com";
 export const DDB_WATERDEEP = "https://www.dndbeyond.com";
 
 export const ENDPOINTS = {
@@ -83,6 +84,11 @@ export const ENDPOINTS = {
     list: () => `${DDB_WATERDEEP}/api/campaign/stt/active-campaigns`,
     userCampaigns: () => `${DDB_WATERDEEP}/api/campaign/stt/user-campaigns`,
     characters: (campaignId: number) => `${DDB_WATERDEEP}/api/campaign/stt/active-short-characters/${campaignId}`,
+  },
+  encounter: {
+    list: (skip = 0, take = 10) => `${DDB_ENCOUNTER_SERVICE}/v1/encounters?skip=${skip}&take=${take}`,
+    get: (id: string) => `${DDB_ENCOUNTER_SERVICE}/v1/encounters/${encodeURIComponent(id)}`,
+    userConfig: () => `${DDB_ENCOUNTER_SERVICE}/v1/encounters/user-config`,
   },
   config: {
     json: () => `${DDB_WATERDEEP}/api/config/json`,

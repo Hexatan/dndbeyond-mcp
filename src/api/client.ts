@@ -67,11 +67,10 @@ export class DdbClient {
     return result;
   }
 
-  async delete<T>(url: string, body: unknown, invalidateCacheKeys?: string[]): Promise<T> {
-    const result = await this.request<T>(url, {
-      method: "DELETE",
-      body: JSON.stringify(body),
-    });
+  async delete<T>(url: string, body?: unknown, invalidateCacheKeys?: string[]): Promise<T> {
+    const options: RequestInit = { method: "DELETE" };
+    if (body !== undefined) options.body = JSON.stringify(body);
+    const result = await this.request<T>(url, options);
     if (invalidateCacheKeys) {
       for (const key of invalidateCacheKeys) {
         this.cache.invalidate(key);
@@ -120,7 +119,13 @@ export class DdbClient {
 
         let json: unknown;
         try {
-          json = await response.json();
+          if (typeof response.text === "function") {
+            const text = await response.text();
+            if (!text) return undefined as T;
+            json = JSON.parse(text);
+          } else {
+            json = await response.json();
+          }
         } catch (error) {
           throw new Error(
             `D&D Beyond API returned invalid JSON for ${this.formatUrlForError(url)}: ${error instanceof Error ? error.message : String(error)}`,
@@ -172,7 +177,8 @@ export class DdbClient {
     // character-service and monster-service use bearer tokens
     if (
       url.includes("character-service.dndbeyond.com") ||
-      url.includes("monster-service.dndbeyond.com")
+      url.includes("monster-service.dndbeyond.com") ||
+      url.includes("encounter-service.dndbeyond.com")
     ) {
       const token = await getCobaltToken();
       return {

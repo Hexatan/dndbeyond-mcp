@@ -1,0 +1,34 @@
+uid=20_0 RootWebArea "One-shot - D&D Beyond" url="https://www.dndbeyond.com/games/3999469"
+  uid=24_0 alert atomic live="assertive" relevant="additions text"
+  uid=24_1 button "Feedback - Show survey"
+  uid=24_2 button
+  uid=24_3 button
+  uid=24_4 button
+  uid=24_5 button
+  uid=24_6 button
+  uid=24_7 button
+  uid=24_8 button
+  uid=24_9 button
+  uid=24_10 button
+  uid=24_11 button
+  uid=24_12 button "Display Scene"
+  uid=24_13 button "Zoom Out"
+  uid=24_14 button "Reset Zoom"
+  uid=24_15 button "Zoom In"
+  uid=24_16 button
+  uid=24_17 button
+  uid=24_18 button "Roll Dice"
+  uid=24_19 button "Game Log"
+  uid=24_20 button "Game Info" focusable focused
+  uid=24_21 button
+  uid=24_22 combobox expandable haspopup="listbox" value="Mushroom Cave"
+  uid=24_23 button "Create a Journal Entry" expandable
+  uid=24_24 button "Open Campaign Journal"
+  uid=24_25 button "EVERYONE"
+  uid=24_26 button
+  uid=25_0 StaticText "Connected Players (0)"
+  uid=25_1 button "Close Game Info"
+  uid=25_2 button "Copy campaign invite to add new players to this game."
+  uid=25_3 button "Copy maps link to share with players in this game."
+  uid=25_4 button "List of Shortcuts available for players."
+  uid=25_5 button "User Reporting & Feedback"

@@ -40,6 +40,13 @@ import {
 import { generateCharacterSheetPdf } from "./character-sheet-pdf.js";
 import { listCampaigns, getCampaignCharacters } from "./campaign.js";
 import {
+  deleteEncounter,
+  getEncounter,
+  getEncounterConfig,
+  listEncounters,
+  updateEncounter,
+} from "./encounter.js";
+import {
   searchSpells,
   getSpell,
   searchMonsters,
@@ -669,6 +676,70 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
       getCampaignCharacters(client, {
         campaignId: params.campaignId,
         includeAll: params.includeAll,
+      })
+  );
+
+  // Register encounter tools
+  server.tool(
+    "list_encounters",
+    "List saved D&D Beyond encounters",
+    {
+      skip: z.coerce.number().optional().describe("Pagination offset, default 0"),
+      take: z.coerce.number().optional().describe("Page size, default 10, max 100"),
+    },
+    async (params) => listEncounters(client, { skip: params.skip, take: params.take })
+  );
+
+  server.tool(
+    "get_encounter_config",
+    "Get D&D Beyond encounter count and subscription limit",
+    {},
+    async () => getEncounterConfig(client)
+  );
+
+  server.tool(
+    "get_encounter",
+    "Get a saved D&D Beyond encounter by ID or name",
+    {
+      encounterId: z.string().optional().describe("The encounter UUID from list_encounters"),
+      encounterName: z.string().optional().describe("Encounter name; exact match preferred, then partial match"),
+    },
+    async (params) => getEncounter(client, { encounterId: params.encounterId, encounterName: params.encounterName })
+  );
+
+  server.tool(
+    "update_encounter",
+    "Update safe metadata fields on a saved D&D Beyond encounter",
+    {
+      encounterId: z.string().optional().describe("The encounter UUID from list_encounters"),
+      encounterName: z.string().optional().describe("Encounter name; exact match preferred, then partial match"),
+      name: z.string().optional().describe("New encounter name"),
+      description: z.string().optional().describe("New encounter description"),
+      flavorText: z.string().optional().describe("New encounter flavor text"),
+    },
+    async (params) =>
+      updateEncounter(client, {
+        encounterId: params.encounterId,
+        encounterName: params.encounterName,
+        name: params.name,
+        description: params.description,
+        flavorText: params.flavorText,
+      })
+  );
+
+  server.tool(
+    "delete_encounter",
+    "Delete a saved D&D Beyond encounter. Requires confirmName to match the encounter name.",
+    {
+      encounterId: z.string().optional().describe("The encounter UUID from list_encounters"),
+      encounterName: z.string().optional().describe("Encounter name; exact match preferred, then partial match"),
+      confirmName: z.string().optional().describe("Must exactly match the encounter name"),
+    },
+    async (params) =>
+      deleteEncounter(client, {
+        encounterId: params.encounterId,
+        encounterName: params.encounterName,
+        confirmName: params.confirmName,
       })
   );
 

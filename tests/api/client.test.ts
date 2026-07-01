@@ -89,6 +89,27 @@ describe("DdbClient", () => {
       );
     });
 
+    it("shouldUseBearerAuthForEncounterService", async () => {
+      (mockCache.get as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ data: [] }),
+      });
+
+      await client.getRaw("https://encounter-service.dndbeyond.com/v1/encounters", "encounters");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://encounter-service.dndbeyond.com/v1/encounters",
+        expect.objectContaining({
+          method: "GET",
+          headers: expect.objectContaining({
+            Authorization: "Bearer fake-bearer-token",
+          }),
+        })
+      );
+      expect(mockGetAllCookies).not.toHaveBeenCalled();
+    });
+
     it("shouldStoreResultInCacheAfterFetch", async () => {
       const apiData = { success: true, data: { id: 1, name: "API Character" } };
       (mockCache.get as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
@@ -162,6 +183,26 @@ describe("DdbClient", () => {
       await client.put("https://character-service.dndbeyond.com/character/v5/character/1", { name: "Updated" });
 
       expect(mockCache.invalidate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("delete", () => {
+    it("shouldHandleEmptyResponseBodies", async () => {
+      (mockCache.get as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        text: vi.fn().mockResolvedValue(""),
+      });
+
+      await expect(
+        client.delete("https://encounter-service.dndbeyond.com/v1/encounters/abc", undefined, ["encounters"])
+      ).resolves.toBeUndefined();
+
+      const options = mockFetch.mock.calls[0][1];
+      expect(mockFetch.mock.calls[0][0]).toBe("https://encounter-service.dndbeyond.com/v1/encounters/abc");
+      expect(options).toEqual(expect.objectContaining({ method: "DELETE" }));
+      expect(options).not.toHaveProperty("body");
+      expect(mockCache.invalidate).toHaveBeenCalledWith("encounters");
     });
   });
 

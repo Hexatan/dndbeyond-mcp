@@ -1,0 +1,41 @@
+{
+  "campaign": {
+    "id": 3999469,
+    "name": "One-shot"
+  },
+  "campaignsWithAccess": null,
+  "compendiumLink": null,
+  "copiedFromId": null,
+  "coverImage": "https://media.dndbeyond.com/encounter-builder/images/encounter-builder-cover-default.jpg",
+  "coverImagePosition": "center center",
+  "dateCreated": 1682223329996,
+  "dateModified": 1682742080238,
+  "description": "",
+  "difficulty": 1,
+  "flavorText": "",
+  "groups": [
+    {
+      "id": "974398e2-0162-48cd-a50a-7ff96897b92a",
+      "name": null,
+      "order": 1
+    },
+    {
+      "id": "73610d3c-8c9e-46be-812c-7e07a7ecafe7",
+      "name": null,
+      "order": 2
+    },
+    {
+      "id": "d7357776-020e-4bb8-88ee-f3dbbf1bd6da",
+      "name": null,
+      "order": 3
+    },
+    {
+      "id": "2ba0472b-0f0a-41ba-ae82-bffe348c3655",
+      "name": null,
+      "order": 4
+    }
+  ],
+  "id": "11e1c9d4-a0bc-42da-aaf0-5c510ce834c6",
+  "inProgress": true,
+  "isEditable": true,
+... (216 lines truncated)
