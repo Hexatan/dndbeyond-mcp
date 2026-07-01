@@ -95,6 +95,11 @@ describe("MCP Server Integration", () => {
     const toolNames = response.tools.map((tool) => tool.name);
     expect(toolNames).toContain("check_auth");
     expect(toolNames).toContain("list_campaigns");
+    expect(toolNames).toContain("list_encounters");
+    expect(toolNames).toContain("get_encounter");
+    expect(toolNames).toContain("get_encounter_config");
+    expect(toolNames).toContain("update_encounter");
+    expect(toolNames).toContain("delete_encounter");
     expect(toolNames).toContain("list_characters");
     expect(toolNames).toContain("get_character");
     expect(toolNames).toContain("update_hp");

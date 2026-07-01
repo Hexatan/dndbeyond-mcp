@@ -1,0 +1,41 @@
+{
+  "id": "11e1c9d4-a0bc-42da-aaf0-5c510ce834c6",
+  "copiedFromId": null,
+  "userId": 110164516,
+  "name": "A beastly wake-up call",
+  "map": null,
+  "room": null,
+  "source": null,
+  "inProgress": true,
+  "roundNum": 6,
+  "turnNum": 6,
+  "notes": null,
+  "monsters": [
+    {
+      "groupId": "974398e2-0162-48cd-a50a-7ff96897b92a",
+      "id": 16889,
+      "uniqueId": "119e2e72-93cc-497d-aef2-a7e2fa0d29ef",
+      "name": "Giant Owl (A)",
+      "order": 2,
+      "quantity": 1,
+      "notes": null,
+      "index": 0,
+      "currentHitPoints": 0,
+      "temporaryHitPoints": 0,
+      "maximumHitPoints": 19,
+      "initiative": 14
+    },
+    {
+      "groupId": "974398e2-0162-48cd-a50a-7ff96897b92a",
+      "id": 16889,
+      "uniqueId": "667daedc-eba6-4447-9e1d-ad4ed211cde6",
+      "name": "Giant Owl (B)",
+      "order": 1,
+      "quantity": 1,
+      "notes": null,
+      "index": 1,
+      "currentHitPoints": 0,
+      "temporaryHitPoints": 0,
+      "maximumHitPoints": 19,
+      "initiative": 14
+... (215 lines truncated)

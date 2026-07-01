@@ -17,6 +17,7 @@ dist/
 
 # Captured API data (may contain auth tokens)
 setup/captured-requests.json
+setup/explored-*.json
 
 # IDE
 .idea/

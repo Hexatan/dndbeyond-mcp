@@ -64,6 +64,71 @@ GET /v1/Monster?ids={id1}&ids={id2}&ids={id3}
 - **Auth:** Optional
 - Max ~100 IDs per request
 
+---
+
+## Encounter Endpoints (`encounter-service.dndbeyond.com`)
+
+Validated on 2026-07-01 with an authenticated browser/request capture.
+
+### List Encounters
+```
+GET /v1/Encounters
+```
+- **Auth:** Bearer token required
+- **Response:** `{ editable, config, pagination, stats, metaData, data[] }`
+- `data[]` contains saved encounter summaries with encounter IDs, names, monsters, groups, players, difficulty, status, campaign, timestamps, and combat-tracker state.
+
+### Get Encounter Detail
+```
+GET /v1/encounters/{encounterId}
+```
+- **Auth:** Bearer token required
+- **Response:** `{ stats, editable, data }`
+- `data` includes:
+  - `id`, `name`, `campaign`, `difficulty`, `status`
+  - `inProgress`, `roundNum`, `turnNum`
+  - `monsters[]` with group, unique ID, name, quantity, HP, temp HP, max HP, initiative, and notes fields
+  - `players[]` with character ID, level, race, class byline, readiness, HP, temp HP, max HP, initiative, avatar, and username fields
+  - `groups[]`, `manualEntries[]`, `notes`, `description`, `rewards`, `flavorText`
+
+### User Config
+```
+GET /v1/encounters/user-config
+```
+- **Auth:** Bearer token required
+- **Response:** `{ encounterLimit, currentEncounterCount }`
+
+### Encounter Web Routes
+These HTML routes trigger the service calls above:
+```
+GET /my-encounters
+GET /encounter-builder
+GET /encounters/{encounterId}
+GET /encounters/{encounterId}/edit
+GET /encounters/{encounterId}/copy
+GET /combat-tracker/{encounterId}
+```
+
+### Non-working Candidates
+These returned 404 during the 2026-07-01 check:
+```
+GET https://www.dndbeyond.com/api/encounter-builder
+GET https://www.dndbeyond.com/api/encounter-builder/encounters
+GET https://www.dndbeyond.com/api/encounterbuilder
+GET https://www.dndbeyond.com/api/encounterbuilder/encounters
+GET https://www.dndbeyond.com/api/encounter
+GET https://www.dndbeyond.com/api/encounters
+GET https://www.dndbeyond.com/api/my-encounters
+GET https://www.dndbeyond.com/api/combat-tracker
+GET https://www.dndbeyond.com/api/combat-tracker/encounters
+GET https://encounter-service.dndbeyond.com/v1/Encounter
+GET https://encounter-service.dndbeyond.com/v1/Encounter/List
+```
+
+### Implementation Notes
+- Read-only MCP tools look feasible: `list_encounters`, `get_encounter`, and possibly `get_combat_tracker`.
+- Write endpoints were not explored to avoid mutating user data. Creating, editing, copying, deleting, or advancing combat should be a separate disposable-encounter test with explicit approval.
+
 ### Monster Object Shape
 ```typescript
 {
@@ -267,7 +332,6 @@ These domains do NOT exist (CORS/DNS failure):
 
 These domains exist but return 404 on all tested paths:
 - `gamedata-service.dndbeyond.com`
-- `encounter-service.dndbeyond.com`
 
 ---
 

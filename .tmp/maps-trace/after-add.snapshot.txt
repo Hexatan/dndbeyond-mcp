@@ -1,0 +1,11 @@
+uid=20_0 RootWebArea "One-shot - D&D Beyond" url="https://www.dndbeyond.com/games/3999469"
+  uid=22_0 dialog modal
+    uid=22_1 banner
+      uid=22_2 heading "Add map to game" level="1"
+      uid=22_3 button "Close Add map to game"
+    uid=22_4 StaticText "Map Title"
+    uid=22_5 textbox "Map Title" focusable focused required value="Mushroom Cave"
+    uid=22_6 button
+    uid=22_7 contentinfo
+      uid=22_8 button "CANCEL"
+      uid=22_9 button "ADD"
