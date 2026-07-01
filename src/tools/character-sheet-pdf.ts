@@ -13,7 +13,6 @@ import type {
   DdbMovementSpeeds,
   DdbSpell,
 } from "../types/character.js";
-import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
 import {
   ABILITY_NAMES,
   calculateAc,
@@ -23,8 +22,8 @@ import {
   computeLevel,
   sumModifierBonuses,
 } from "../utils/character-calculations.js";
-import { levenshteinDistance } from "../utils/fuzzy-match.js";
-import { getOwnedCharacterList } from "../utils/character-list.js";
+import { findAccessibleCharacterByName } from "../utils/character-list.js";
+import { stripHtml } from "../utils/html.js";
 
 export type CharacterSheetTheme = "light" | "color" | "inverted";
 
@@ -1145,34 +1144,8 @@ async function resolveCharacterId(client: DdbClient, params: GenerateCharacterSh
   if (params.characterId) return params.characterId;
   if (!params.characterName) return "Either characterId or characterName must be provided.";
 
-  const ownedCharacters = await getOwnedCharacterList(client);
-  let allCharacters: Array<{ id: number; name: string }>;
-  if (ownedCharacters !== null) {
-    allCharacters = ownedCharacters.map((char) => ({ id: char.id, name: char.name }));
-  } else {
-    const campaigns = await client.get<DdbCampaign[]>(ENDPOINTS.campaign.list(), "campaigns", 300_000);
-    allCharacters = [];
-    for (const campaign of campaigns) {
-      const characters = await client.get<DdbCampaignCharacter2[]>(
-        ENDPOINTS.campaign.characters(campaign.id),
-        `campaign:${campaign.id}:characters`,
-        300_000,
-      );
-      allCharacters.push(...characters.map((char) => ({ id: char.id, name: char.name })));
-    }
-  }
-
-  const lowerName = params.characterName.toLowerCase();
-  const exact = allCharacters.find((char) => char.name.toLowerCase() === lowerName);
-  if (exact) return exact.id;
-  const substringMatches = allCharacters.filter((char) => char.name.toLowerCase().includes(lowerName));
-  if (substringMatches.length === 1) return substringMatches[0].id;
-
-  const fuzzyMatches = allCharacters.filter((char) => {
-    if (levenshteinDistance(lowerName, char.name.toLowerCase()) <= 3) return true;
-    return char.name.split(/\s+/).some((word) => levenshteinDistance(lowerName, word.toLowerCase()) <= 3);
-  });
-  return fuzzyMatches.length === 1 ? fuzzyMatches[0].id : `Character "${params.characterName}" not found.`;
+  const foundId = await findAccessibleCharacterByName(client, params.characterName);
+  return foundId ?? `Character "${params.characterName}" not found.`;
 }
 
 function buildAbilities(char: DdbCharacter): SheetField[] {
@@ -1782,23 +1755,6 @@ function shortDetail(value: string | null | undefined, max = 90): string {
     .trim();
   if (text.length <= max) return text;
   return `${text.slice(0, max - 3).trimEnd()}...`;
-}
-
-function stripHtml(value: string | null | undefined): string {
-  if (!value) return "";
-  return value
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&rsquo;/g, "'")
-    .replace(/&ldquo;/g, '"')
-    .replace(/&rdquo;/g, '"')
-    .replace(/&#\d+;/g, (m) => String.fromCharCode(Number(m.slice(2, -1))))
-    .trim();
 }
 
 function passiveScore(data: CharacterSheetData, skillName: string): string {

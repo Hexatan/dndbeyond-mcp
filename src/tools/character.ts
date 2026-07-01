@@ -13,10 +13,10 @@ import type {
   DdbInventoryItem,
   DdbMovementSpeeds,
 } from "../types/character.js";
-import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
-import { fuzzyMatch, levenshteinDistance } from "../utils/fuzzy-match.js";
-import { ABILITY_NAMES, ABILITY_SUBTYPE_MAP, calculateAbilityModifier, sumModifierBonuses, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc } from "../utils/character-calculations.js";
-import { formatListedCharacter, getOwnedCharacterList } from "../utils/character-list.js";
+import { fuzzyMatch } from "../utils/fuzzy-match.js";
+import { ABILITY_NAMES, calculateAbilityModifier, sumModifierBonuses, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc } from "../utils/character-calculations.js";
+import { findAccessibleCharacterByName, formatListedCharacter, getCampaignCharacterRefs, getOwnedCharacterList } from "../utils/character-list.js";
+import { stripHtml } from "../utils/html.js";
 
 interface GetCharacterParams {
   characterId?: number;
@@ -42,7 +42,7 @@ function formatAbilityScores(char: DdbCharacter): string {
 }
 
 function formatClasses(char: DdbCharacter): string {
-  const classes = char.classes
+  const classes = [...char.classes]
     .sort((a, b) => (b.isStartingClass ? 1 : 0) - (a.isStartingClass ? 1 : 0))
     .map((cls) => {
       const subclass = cls.subclassDefinition?.name ? ` (${cls.subclassDefinition.name})` : "";
@@ -61,7 +61,7 @@ function formatHp(char: DdbCharacter): string {
 function formatSpells(char: DdbCharacter): string {
   const allSpells = getAllSpells(char);
 
-  if (allSpells.length === 0) return StringUtils.EMPTY;
+  if (allSpells.length === 0) return "";
 
   const prepared = allSpells.filter((s) => s.prepared || s.alwaysPrepared);
   const preparedByLevel = prepared.reduce((acc, spell) => {
@@ -83,10 +83,10 @@ function formatSpells(char: DdbCharacter): string {
 
 function formatInventory(char: DdbCharacter): string {
   const equipped = char.inventory.filter((item) => item.equipped);
-  if (equipped.length === 0) return StringUtils.EMPTY;
+  if (equipped.length === 0) return "";
 
   const items = equipped.map((item) => {
-    const qty = item.quantity > 1 ? ` (x${item.quantity})` : StringUtils.EMPTY;
+    const qty = item.quantity > 1 ? ` (x${item.quantity})` : "";
     return `  - ${item.definition.name}${qty}`;
   });
 
@@ -107,30 +107,13 @@ function getAllSpells(char: DdbCharacter): DdbSpell[] {
   ];
 }
 
-function stripHtml(s: string | null | undefined): string {
-  if (!s) return StringUtils.EMPTY;
-  return s
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&ndash;/g, "\u2013")
-    .replace(/&mdash;/g, "\u2014")
-    .replace(/&#\d+;/g, (m) => String.fromCharCode(parseInt(m.slice(2, -1))))
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 async function resolveCharacterId(
   client: DdbClient,
   params: GetCharacterParams
 ): Promise<number | string> {
   if (params.characterId) return params.characterId;
   if (params.characterName) {
-    const foundId = await findCharacterByName(client, params.characterName);
+    const foundId = await findAccessibleCharacterByName(client, params.characterName);
     if (!foundId) return `Character "${params.characterName}" not found.`;
     return foundId;
   }
@@ -164,15 +147,6 @@ function getAbilityModNumeric(char: DdbCharacter, id: number): number {
 // ============================================================================
 // CHARACTER SHEET FORMATTING
 // ============================================================================
-
-const ABILITY_FULL_NAMES: Record<number, string> = {
-  1: "Strength",
-  2: "Dexterity",
-  3: "Constitution",
-  4: "Intelligence",
-  5: "Wisdom",
-  6: "Charisma",
-};
 
 const SAVING_THROW_SUBTYPES: Record<number, string> = {
   1: "strength-saving-throws",
@@ -319,7 +293,7 @@ function formatProficiencies(char: DdbCharacter): string {
   if (tools.size > 0) lines.push(`Tools: ${[...tools].sort().join(", ")}`);
   if (languages.size > 0) lines.push(`Languages: ${[...languages].sort().join(", ")}`);
 
-  if (lines.length === 0) return StringUtils.EMPTY;
+  if (lines.length === 0) return "";
 
   return `\n--- Proficiencies ---\n${lines.join("\n")}`;
 }
@@ -327,7 +301,7 @@ function formatProficiencies(char: DdbCharacter): string {
 function formatSpellcasting(char: DdbCharacter): string {
   const allSpells = getAllSpells(char);
 
-  if (allSpells.length === 0) return StringUtils.EMPTY;
+  if (allSpells.length === 0) return "";
 
   const profBonus = calculateProficiencyBonus(computeLevel(char));
   const spellcastingClasses = char.classes.filter(cls => getSpellcastingAbilityId(cls) !== null);
@@ -502,7 +476,7 @@ function formatSpeedPart(label: string, value: number | null | undefined): strin
 
 function formatSpellSlots(char: DdbCharacter): string {
   if (!char.spellSlots || char.spellSlots.length === 0) {
-    return StringUtils.EMPTY;
+    return "";
   }
 
   const lines = char.spellSlots
@@ -513,7 +487,7 @@ function formatSpellSlots(char: DdbCharacter): string {
       return `Level ${slot.level}: ${filled}${empty} (${slot.used}/${slot.available} used)`;
     });
 
-  if (lines.length === 0) return StringUtils.EMPTY;
+  if (lines.length === 0) return "";
 
   let result = `\n--- Spell Slots ---\n${lines.join("\n")}`;
 
@@ -555,7 +529,7 @@ function formatHitDice(char: DdbCharacter): string {
     hitDiceByClass.push(`${cls.definition.name}: ${total}${hitDie}`);
   }
 
-  if (hitDiceByClass.length === 0) return StringUtils.EMPTY;
+  if (hitDiceByClass.length === 0) return "";
 
   return `\n--- Hit Dice ---\n${hitDiceByClass.join("\n")}${hitDiceUsed > 0 ? ` (${hitDiceUsed} used)` : ""}`;
 }
@@ -569,7 +543,7 @@ function formatTraits(char: DdbCharacter): string {
   if (traits.bonds) lines.push(`Bonds: ${traits.bonds}`);
   if (traits.flaws) lines.push(`Flaws: ${traits.flaws}`);
 
-  if (lines.length === 0) return StringUtils.EMPTY;
+  if (lines.length === 0) return "";
 
   return `\n--- Traits ---\n${lines.join("\n")}`;
 }
@@ -584,7 +558,7 @@ function formatNotes(char: DdbCharacter): string {
   if (notes.allies) lines.push(`Allies: ${notes.allies}`);
   if (notes.organizations) lines.push(`Organizations: ${notes.organizations}`);
 
-  if (lines.length === 0) return StringUtils.EMPTY;
+  if (lines.length === 0) return "";
 
   return `\n--- Notes ---\n${lines.join("\n")}`;
 }
@@ -599,13 +573,13 @@ function formatCharacterSheet(char: DdbCharacter): string {
     `HP: ${formatHp(char)}`,
     `AC: ${calculateAc(char)}`,
     formatSpeed(char),
-    StringUtils.EMPTY,
+    "",
     `--- Ability Scores ---`,
     formatAbilityScores(char),
-    StringUtils.EMPTY,
+    "",
     `--- Saving Throws (* = proficient) ---`,
     formatSavingThrows(char),
-    StringUtils.EMPTY,
+    "",
     `--- Skills (* = proficient, ** = expertise) ---`,
     formatSkills(char),
   ];
@@ -616,7 +590,7 @@ function formatCharacterSheet(char: DdbCharacter): string {
 
   const spellcasting = formatSpellcasting(char);
   if (spellcasting) {
-    sections.push(StringUtils.EMPTY, `--- Spellcasting ---`, spellcasting);
+    sections.push("", `--- Spellcasting ---`, spellcasting);
     const spells = formatSpells(char);
     if (spells) sections.push(spells.trim());
 
@@ -630,16 +604,16 @@ function formatCharacterSheet(char: DdbCharacter): string {
   if (hitDice) sections.push(hitDice.trim());
 
   sections.push(
-    StringUtils.EMPTY,
+    "",
     `--- Limited-Use Resources ---`,
     formatLimitedUseResources(char),
-    StringUtils.EMPTY,
+    "",
     `--- Feats ---`,
     formatFeatNames(char),
-    StringUtils.EMPTY,
+    "",
     `--- Class Features ---`,
     formatClassFeatureNames(char),
-    StringUtils.EMPTY,
+    "",
     `--- Racial Traits ---`,
     formatRacialTraitNames(char)
   );
@@ -656,7 +630,7 @@ function formatCharacterSheet(char: DdbCharacter): string {
   if (notes) sections.push(notes.trim());
 
   if (char.campaign) {
-    sections.push(StringUtils.EMPTY, `Campaign: ${char.campaign.name}`);
+    sections.push("", `Campaign: ${char.campaign.name}`);
   }
 
   return sections.join("\n");
@@ -725,7 +699,7 @@ function formatSpellDefinition(spell: DdbSpell): string {
     `Duration: ${duration}`,
   ];
   if (d.ritual) lines.push("Ritual: Yes");
-  lines.push(StringUtils.EMPTY, stripHtml(d.description));
+  lines.push("", stripHtml(d.description));
   return lines.join("\n");
 }
 
@@ -733,14 +707,14 @@ function formatFeatDefinition(feat: DdbFeat): string {
   const d = feat.definition;
   const lines = [d.name];
   if (d.prerequisite) lines.push(`Prerequisite: ${d.prerequisite}`);
-  lines.push(StringUtils.EMPTY, stripHtml(d.description));
+  lines.push("", stripHtml(d.description));
   return lines.join("\n");
 }
 
 function formatClassFeatureDefinition(feature: DdbClassFeature, className: string): string {
   const lines = [
     `${featureName(feature)} (${className}, Level ${featureLevel(feature)})`,
-    StringUtils.EMPTY,
+    "",
     stripHtml(featureDescription(feature)),
   ];
   return lines.join("\n");
@@ -757,7 +731,7 @@ function formatItemDefinition(item: DdbInventoryItem): string {
     `${d.name} (${d.type}, ${d.rarity})`,
     `Weight: ${d.weight} lb`,
   ];
-  lines.push(StringUtils.EMPTY, stripHtml(d.description));
+  lines.push("", stripHtml(d.description));
   return lines.join("\n");
 }
 
@@ -974,69 +948,6 @@ function formatCharacter(char: DdbCharacter): string {
   return sections.join("\n");
 }
 
-async function findCharacterByName(client: DdbClient, name: string): Promise<number | null> {
-  const ownedCharacters = await getOwnedCharacterList(client);
-  let allCharacters: Array<{ id: number; name: string }>;
-
-  if (ownedCharacters !== null) {
-    allCharacters = ownedCharacters.map((char) => ({ id: char.id, name: char.name }));
-  } else {
-    const campaignsResponse = await client.get<DdbCampaign[]>(
-      ENDPOINTS.campaign.list(),
-      "campaigns",
-      300_000
-    );
-
-    // Fetch characters from each campaign using the new endpoint
-    allCharacters = [];
-    for (const campaign of campaignsResponse) {
-      const characters = await client.get<DdbCampaignCharacter2[]>(
-        ENDPOINTS.campaign.characters(campaign.id),
-        `campaign:${campaign.id}:characters`,
-        300_000
-      );
-      allCharacters.push(...characters.map((char) => ({
-        id: char.id,
-        name: char.name,
-      })));
-    }
-  }
-
-  // 1. Exact match (case-insensitive)
-  const exactMatch = allCharacters.find(
-    (char) => char.name.toLowerCase() === name.toLowerCase()
-  );
-  if (exactMatch) return exactMatch.id;
-
-  // 2. Substring match (case-insensitive)
-  const lowerName = name.toLowerCase();
-  const substringMatches = allCharacters.filter(
-    (char) => char.name.toLowerCase().includes(lowerName)
-  );
-  if (substringMatches.length === 1) return substringMatches[0].id;
-
-  // 3. Fuzzy match via Levenshtein distance — check full names and individual words
-  const fuzzyResults: Array<{ id: number; name: string }> = [];
-  for (const char of allCharacters) {
-    const fullDistance = levenshteinDistance(lowerName, char.name.toLowerCase());
-    if (fullDistance <= 3) {
-      fuzzyResults.push(char);
-      continue;
-    }
-    // Check individual words (e.g., "Throin" matches "Thorin" in "Thorin Ironforge")
-    const words = char.name.split(/\s+/);
-    for (const word of words) {
-      if (levenshteinDistance(lowerName, word.toLowerCase()) <= 3) {
-        fuzzyResults.push(char);
-        break;
-      }
-    }
-  }
-  if (fuzzyResults.length === 1) return fuzzyResults[0].id;
-
-  return null;
-}
-
 export async function getCharacter(
   client: DdbClient,
   params: GetCharacterParams
@@ -1096,26 +1007,7 @@ export async function listCharacters(
     };
   }
 
-  const campaignsResponse = await client.get<DdbCampaign[]>(
-    ENDPOINTS.campaign.list(),
-    "campaigns",
-    300_000
-  );
-
-  // Fetch characters from each campaign using the characters endpoint
-  const allCharacters: Array<{ id: number; name: string; campaignName: string }> = [];
-  for (const campaign of campaignsResponse) {
-    const characters = await client.get<DdbCampaignCharacter2[]>(
-      ENDPOINTS.campaign.characters(campaign.id),
-      `campaign:${campaign.id}:characters`,
-      300_000
-    );
-    allCharacters.push(...characters.map((char) => ({
-      id: char.id,
-      name: char.name,
-      campaignName: campaign.name,
-    })));
-  }
+  const allCharacters = await getCampaignCharacterRefs(client);
 
   if (allCharacters.length === 0) {
     return {
@@ -1196,10 +1088,6 @@ export async function getDefinition(
   return { content: [{ type: "text", text: formatted }] };
 }
 
-
-class StringUtils {
-  static readonly EMPTY = "";
-}
 
 // ============================================================================
 // WRITE OPERATIONS
@@ -1450,7 +1338,7 @@ export async function updateDeathSaves(
       content: [
         {
           type: "text",
-          text: `Updated death saves: ${params.count} ${params.type}${params.count === 1 ? StringUtils.EMPTY : "es"}.`,
+          text: `Updated death saves: ${params.count} ${params.type}${params.count === 1 ? "" : "es"}.`,
         },
       ],
     };
@@ -1673,7 +1561,7 @@ export async function castSpell(
   client: DdbClient,
   params: CastSpellParams
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  if (!params.spellName || params.spellName.trim() === StringUtils.EMPTY) {
+  if (!params.spellName || params.spellName.trim() === "") {
     return {
       content: [{ type: "text", text: "Spell name cannot be empty." }],
     };
@@ -1721,14 +1609,14 @@ export async function castSpell(
 
     // Determine if warlock using pact magic
     const isWarlock = character.classes.some(cls => cls.definition.name === "Warlock");
-    const hasPactMagic = character.pactMagic && character.pactMagic.available > 0;
+    const pactMagic = character.pactMagic;
 
-    if (isWarlock && hasPactMagic && spellLevel <= character.pactMagic!.level) {
+    if (isWarlock && pactMagic && pactMagic.available > 0 && spellLevel <= pactMagic.level) {
       // Use pact magic slot
-      const newUsed = character.pactMagic!.used + 1;
-      if (newUsed > character.pactMagic!.available) {
+      const newUsed = pactMagic.used + 1;
+      if (newUsed > pactMagic.available) {
         return {
-          content: [{ type: "text", text: `No pact magic slots remaining (${character.pactMagic!.used}/${character.pactMagic!.available} used).` }],
+          content: [{ type: "text", text: `No pact magic slots remaining (${pactMagic.used}/${pactMagic.available} used).` }],
         };
       }
       await client.put(
@@ -1739,7 +1627,7 @@ export async function castSpell(
       return {
         content: [{
           type: "text",
-          text: `Cast ${spell.definition.name} using pact magic (level ${character.pactMagic!.level}). Pact slots: ${newUsed}/${character.pactMagic!.available} used.`,
+          text: `Cast ${spell.definition.name} using pact magic (level ${pactMagic.level}). Pact slots: ${newUsed}/${pactMagic.available} used.`,
         }],
       };
     }
@@ -1797,7 +1685,7 @@ export async function useAbility(
   client: DdbClient,
   params: UseAbilityParams
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  if (!params.abilityName || params.abilityName.trim() === StringUtils.EMPTY) {
+  if (!params.abilityName || params.abilityName.trim() === "") {
     return {
       content: [{ type: "text", text: "Ability name cannot be empty." }],
     };

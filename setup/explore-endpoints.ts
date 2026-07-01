@@ -281,7 +281,14 @@ async function main() {
   const charId = process.argv[2] ? parseInt(process.argv[2]) : null;
 
   const configRaw = await readFile(CONFIG_PATH, "utf-8");
-  const config = JSON.parse(configRaw);
+  let config: { cookies?: Array<{ name: string; value: string }> };
+  try {
+    config = JSON.parse(configRaw) as { cookies?: Array<{ name: string; value: string }> };
+  } catch (error) {
+    throw new Error(`Invalid auth config at ${CONFIG_PATH}. Run npm run setup to refresh it.`, {
+      cause: error,
+    });
+  }
   const cookies = config.cookies;
 
   if (!cookies?.length) {
@@ -309,6 +316,7 @@ async function main() {
   const page = await context.newPage();
   setupCapture(page);
 
+  let failed = false;
   try {
     // Find a character ID if none provided
     let targetCharId = charId;
@@ -348,8 +356,10 @@ async function main() {
     await exploreBuilder(page);
     await exploreRuleData(page);
 
-  } catch (err: any) {
-    console.error(`Error during exploration: ${err.message}`);
+  } catch (error) {
+    failed = true;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error during exploration: ${message}`);
   }
 
   await browser.close();
@@ -367,6 +377,7 @@ async function main() {
   console.log(`\nTotal requests captured: ${captured.length}`);
   console.log(`Unique endpoints: ${seenEndpoints.size}`);
   console.log(`Saved to ${OUTPUT_PATH}`);
+  if (failed) process.exitCode = 1;
 }
 
 main().catch((err) => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { searchMonsters, getMonster, pickByEdition, collapseByEdition } from "../../src/tools/reference.js";
 import { DdbClient } from "../../src/api/client.js";
 import { MonsterSearchParams } from "../../src/types/reference.js";

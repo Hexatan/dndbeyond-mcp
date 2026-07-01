@@ -12,6 +12,9 @@ dist/
 # Playwright state
 .playwright-mcp/
 
+# Code health scan state
+.desloppify/
+
 # Captured API data (may contain auth tokens)
 setup/captured-requests.json
 

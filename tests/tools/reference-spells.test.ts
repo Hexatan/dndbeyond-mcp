@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { searchSpells, getSpell } from "../../src/tools/reference.js";
 import { DdbClient } from "../../src/api/client.js";
 import { DdbSpell } from "../../src/types/character.js";

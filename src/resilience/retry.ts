@@ -1,4 +1,3 @@
-const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503]);
 const NON_RETRYABLE_STATUS_CODES = new Set([401, 403, 404]);
 
 export interface RetryOptions {

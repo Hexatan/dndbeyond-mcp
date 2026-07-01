@@ -2,7 +2,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { DdbClient } from "../api/client.js";
 import { ENDPOINTS } from "../api/endpoints.js";
 import { HttpError } from "../resilience/index.js";
-import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
+import type { DdbCampaign, DdbCampaignRosterCharacter } from "../types/api.js";
 
 const CAMPAIGN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -101,7 +101,7 @@ export function registerCampaignResources(server: McpServer, client: DdbClient) 
           };
         }
 
-        const characters = await client.get<DdbCampaignCharacter2[]>(
+        const characters = await client.get<DdbCampaignRosterCharacter[]>(
           ENDPOINTS.campaign.characters(campaignId),
           `campaign:${campaignId}:characters`,
           CAMPAIGN_CACHE_TTL

@@ -30,10 +30,21 @@ interface CapturedRequest {
   responsePreview: string | null;
 }
 
+interface SavedAuthConfig {
+  cookies?: Array<{ name: string; value: string }>;
+}
+
 async function main() {
   // Load saved cookies for auth
   const configRaw = await readFile(CONFIG_PATH, "utf-8");
-  const config = JSON.parse(configRaw);
+  let config: SavedAuthConfig;
+  try {
+    config = JSON.parse(configRaw) as SavedAuthConfig;
+  } catch (error) {
+    throw new Error(`Invalid auth config at ${CONFIG_PATH}. Run npm run setup to refresh it.`, {
+      cause: error,
+    });
+  }
   const cookies = config.cookies;
 
   if (!cookies || cookies.length === 0) {

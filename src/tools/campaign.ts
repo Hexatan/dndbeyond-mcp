@@ -2,7 +2,7 @@ import { DdbClient } from "../api/client.js";
 import { getUserId } from "../api/auth.js";
 import { ENDPOINTS } from "../api/endpoints.js";
 import { computeLevel } from "../utils/character-calculations.js";
-import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
+import type { DdbCampaign, DdbCampaignRosterCharacter } from "../types/api.js";
 import type { DdbCharacter } from "../types/character.js";
 
 const CAMPAIGN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -77,7 +77,7 @@ export async function getCampaignCharacters(
   }
 
   // Fetch characters from the new endpoint
-  const characters = await client.get<DdbCampaignCharacter2[]>(
+  const characters = await client.get<DdbCampaignRosterCharacter[]>(
     ENDPOINTS.campaign.characters(params.campaignId),
     `campaign:${params.campaignId}:characters`,
     CAMPAIGN_CACHE_TTL
