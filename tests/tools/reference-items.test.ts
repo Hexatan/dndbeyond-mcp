@@ -8,7 +8,7 @@ import {
   listSources,
 } from "../../src/tools/reference.js";
 import { DdbClient } from "../../src/api/client.js";
-import { ItemSearchParams, FeatSearchParams } from "../../src/types/reference.js";
+import { ItemSearchParams } from "../../src/types/reference.js";
 
 const MOCK_CONFIG_WITH_SOURCES = {
   challengeRatings: [],

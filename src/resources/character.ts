@@ -2,10 +2,9 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import type { DdbClient } from "../api/client.js";
 import { ENDPOINTS } from "../api/endpoints.js";
 import type { DdbCharacter } from "../types/character.js";
-import type { DdbCampaign, DdbCampaignCharacter2 } from "../types/api.js";
 import { HttpError } from "../resilience/index.js";
 import { ABILITY_NAMES, calculateAbilityModifier, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc } from "../utils/character-calculations.js";
-import { formatListedCharacter, getOwnedCharacterList } from "../utils/character-list.js";
+import { formatListedCharacter, getCampaignCharacterRefs, getOwnedCharacterList } from "../utils/character-list.js";
 
 function formatAbilityScores(char: DdbCharacter): string {
   return ABILITY_NAMES.map((name, idx) => {
@@ -17,7 +16,7 @@ function formatAbilityScores(char: DdbCharacter): string {
 }
 
 function formatClasses(char: DdbCharacter): string {
-  const classes = char.classes
+  const classes = [...char.classes]
     .sort((a, b) => (b.isStartingClass ? 1 : 0) - (a.isStartingClass ? 1 : 0))
     .map((cls) => {
       const subclass = cls.subclassDefinition?.name ? ` (${cls.subclassDefinition.name})` : "";
@@ -152,26 +151,7 @@ export function registerCharacterResources(server: McpServer, client: DdbClient)
           };
         }
 
-        const campaignsResponse = await client.get<DdbCampaign[]>(
-          ENDPOINTS.campaign.list(),
-          "campaigns",
-          300_000
-        );
-
-        // Fetch characters from each campaign using the new endpoint
-        const allCharacters: Array<{ id: number; name: string; campaignName: string }> = [];
-        for (const campaign of campaignsResponse) {
-          const characters = await client.get<DdbCampaignCharacter2[]>(
-            ENDPOINTS.campaign.characters(campaign.id),
-            `campaign:${campaign.id}:characters`,
-            300_000
-          );
-          allCharacters.push(...characters.map((char) => ({
-            id: char.id,
-            name: char.name,
-            campaignName: campaign.name,
-          })));
-        }
+        const allCharacters = await getCampaignCharacterRefs(client);
 
         if (allCharacters.length === 0) {
           return {

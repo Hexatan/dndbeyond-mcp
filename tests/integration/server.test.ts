@@ -2,20 +2,13 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vites
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { z } from "zod";
 import { TtlCache } from "../../src/cache/lru.js";
 import { CircuitBreaker, RateLimiter } from "../../src/resilience/index.js";
 import { DdbClient } from "../../src/api/client.js";
 import { registerAllPrompts } from "../../src/prompts/index.js";
 import { registerCharacterResources } from "../../src/resources/character.js";
 import { registerCampaignResources } from "../../src/resources/campaign.js";
-import { setupAuth, checkAuth } from "../../src/tools/auth.js";
-import {
-  getCharacter,
-  listCharacters,
-  updateHp,
-} from "../../src/tools/character.js";
-import { listCampaigns } from "../../src/tools/campaign.js";
+import { registerAllTools } from "../../src/tools/register.js";
 import * as auth from "../../src/api/auth.js";
 
 /**
@@ -41,55 +34,7 @@ function createTestServer(): { server: McpServer; client: DdbClient } {
   registerCharacterResources(server, client);
   registerCampaignResources(server, client);
 
-  // Register a subset of tools for testing
-  server.tool(
-    "check_auth",
-    "Check authentication status",
-    {},
-    async () => checkAuth(client)
-  );
-
-  server.tool(
-    "list_campaigns",
-    "List all active campaigns",
-    {},
-    async () => listCampaigns(client)
-  );
-
-  server.tool(
-    "list_characters",
-    "List all characters",
-    {},
-    async () => listCharacters(client)
-  );
-
-  server.tool(
-    "get_character",
-    "Get character details",
-    {
-      characterId: z.number().optional(),
-      characterName: z.string().optional(),
-    },
-    async (params) =>
-      getCharacter(client, {
-        characterId: params.characterId,
-        characterName: params.characterName,
-      })
-  );
-
-  server.tool(
-    "update_hp",
-    "Update character HP",
-    {
-      characterId: z.number(),
-      hpChange: z.number(),
-    },
-    async (params) =>
-      updateHp(client, {
-        characterId: params.characterId,
-        hpChange: params.hpChange,
-      })
-  );
+  registerAllTools(server, client);
 
   return { server, client };
 }

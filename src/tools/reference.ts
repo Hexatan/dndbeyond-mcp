@@ -1,7 +1,8 @@
 import { DdbClient } from "../api/client.js";
 import { SpellSearchParams, MonsterSearchParams, ItemSearchParams, FeatSearchParams, RaceSearchParams, BackgroundSearchParams, ClassFeatureSearchParams, RacialTraitSearchParams } from "../types/reference.js";
-import { DdbCharacter, DdbSpell } from "../types/character.js";
+import { DdbSpell } from "../types/character.js";
 import { ENDPOINTS } from "../api/endpoints.js";
+import { stripHtml } from "../utils/html.js";
 
 interface ToolResult {
   [key: string]: unknown;
@@ -129,6 +130,24 @@ interface DdbMonster {
 
 // Class IDs for building the full spell compendium
 const SPELLCASTING_CLASS_IDS = [1, 2, 3, 4, 5, 6, 7, 8]; // Bard through Wizard
+const SPELL_COMPENDIUM_REQUESTS = [
+  {
+    cacheSuffix: "cantrips",
+    url: (classId: number) => ENDPOINTS.gameData.alwaysKnownSpells(classId, 1),
+  },
+  {
+    cacheSuffix: "",
+    url: (classId: number) => ENDPOINTS.gameData.alwaysKnownSpells(classId, 20),
+  },
+  {
+    cacheSuffix: "prepared-cantrips",
+    url: (classId: number) => ENDPOINTS.gameData.alwaysPreparedSpells(classId, 1),
+  },
+  {
+    cacheSuffix: "prepared",
+    url: (classId: number) => ENDPOINTS.gameData.alwaysPreparedSpells(classId, 20),
+  },
+];
 
 /**
  * Loads the full spell compendium by querying always-known-spells and always-prepared-spells for all classes.
@@ -138,79 +157,21 @@ const SPELLCASTING_CLASS_IDS = [1, 2, 3, 4, 5, 6, 7, 8]; // Bard through Wizard
 async function loadSpellCompendium(client: DdbClient): Promise<DdbSpell[]> {
   const allSpells = new Map<string, DdbSpell>();
   let failureCount = 0;
-  const totalRequests = SPELLCASTING_CLASS_IDS.length * 4; // 2 for known, 2 for prepared
+  const totalRequests = SPELLCASTING_CLASS_IDS.length * SPELL_COMPENDIUM_REQUESTS.length;
 
   for (const classId of SPELLCASTING_CLASS_IDS) {
-    // Fetch cantrips (level 0) by querying at classLevel=1
-    try {
-      const cantrips = await client.get<DdbSpell[]>(
-        ENDPOINTS.gameData.alwaysKnownSpells(classId, 1),
-        `spell-compendium:class:${classId}:cantrips`,
-        86_400_000, // 24h
-      );
-
-      for (const spell of cantrips ?? []) {
-        const key = `${spell.definition?.name}|${spell.definition?.isLegacy ? "L" : "N"}`;
-        if (spell.definition?.name && !allSpells.has(key)) {
-          allSpells.set(key, spell);
-        }
+    for (const request of SPELL_COMPENDIUM_REQUESTS) {
+      const suffix = request.cacheSuffix ? `:${request.cacheSuffix}` : "";
+      try {
+        const spells = await client.get<DdbSpell[]>(
+          request.url(classId),
+          `spell-compendium:class:${classId}${suffix}`,
+          86_400_000, // 24h
+        );
+        addSpells(allSpells, spells);
+      } catch {
+        failureCount++;
       }
-    } catch {
-      failureCount++;
-    }
-
-    // Fetch higher-level spells (levels 1-9) by querying at classLevel=20
-    try {
-      const spells = await client.get<DdbSpell[]>(
-        ENDPOINTS.gameData.alwaysKnownSpells(classId, 20),
-        `spell-compendium:class:${classId}`,
-        86_400_000, // 24h
-      );
-
-      for (const spell of spells ?? []) {
-        const key = `${spell.definition?.name}|${spell.definition?.isLegacy ? "L" : "N"}`;
-        if (spell.definition?.name && !allSpells.has(key)) {
-          allSpells.set(key, spell);
-        }
-      }
-    } catch {
-      failureCount++;
-    }
-
-    // Fetch always-prepared cantrips (level 0) by querying at classLevel=1
-    try {
-      const preparedCantrips = await client.get<DdbSpell[]>(
-        ENDPOINTS.gameData.alwaysPreparedSpells(classId, 1),
-        `spell-compendium:class:${classId}:prepared-cantrips`,
-        86_400_000, // 24h
-      );
-
-      for (const spell of preparedCantrips ?? []) {
-        const key = `${spell.definition?.name}|${spell.definition?.isLegacy ? "L" : "N"}`;
-        if (spell.definition?.name && !allSpells.has(key)) {
-          allSpells.set(key, spell);
-        }
-      }
-    } catch {
-      failureCount++;
-    }
-
-    // Fetch always-prepared spells (levels 1-9) by querying at classLevel=20
-    try {
-      const preparedSpells = await client.get<DdbSpell[]>(
-        ENDPOINTS.gameData.alwaysPreparedSpells(classId, 20),
-        `spell-compendium:class:${classId}:prepared`,
-        86_400_000, // 24h
-      );
-
-      for (const spell of preparedSpells ?? []) {
-        const key = `${spell.definition?.name}|${spell.definition?.isLegacy ? "L" : "N"}`;
-        if (spell.definition?.name && !allSpells.has(key)) {
-          allSpells.set(key, spell);
-        }
-      }
-    } catch {
-      failureCount++;
     }
   }
 
@@ -219,6 +180,15 @@ async function loadSpellCompendium(client: DdbClient): Promise<DdbSpell[]> {
   }
 
   return Array.from(allSpells.values());
+}
+
+function addSpells(allSpells: Map<string, DdbSpell>, spells: DdbSpell[] | undefined): void {
+  for (const spell of spells ?? []) {
+    const key = `${spell.definition?.name}|${spell.definition?.isLegacy ? "L" : "N"}`;
+    if (spell.definition?.name && !allSpells.has(key)) {
+      allSpells.set(key, spell);
+    }
+  }
 }
 
 /**
@@ -238,7 +208,7 @@ export async function searchSpells(
     return { content: [{ type: "text", text: message }] };
   }
 
-  let matchedSpells = allSpells;
+  let matchedSpells = [...allSpells];
 
   if (params.name) {
     const searchName = params.name.toLowerCase();
@@ -429,22 +399,6 @@ function getOrdinalSuffix(n: number): string {
 }
 
 // --- Monster tools ---
-
-function stripHtml(html: string): string {
-  if (!html) return "";
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<\/li>/gi, "\n")
-    .replace(/<li>/gi, "• ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
 
 function abilityMod(score: number): string {
   const mod = Math.floor((score - 10) / 2);
@@ -692,7 +646,7 @@ export async function getMonster(
   // Ability scores
   if (m.stats && m.stats.length > 0) {
     lines.push("");
-    const statLine = m.stats
+    const statLine = [...m.stats]
       .sort((a, b) => a.statId - b.statId)
       .map((s) => `**${STAT_NAMES[s.statId]}** ${s.value} (${abilityMod(s.value)})`)
       .join(" | ");
@@ -817,7 +771,7 @@ export async function searchItems(
     86_400_000,
   );
 
-  let matched = items ?? [];
+  let matched = [...(items ?? [])];
 
   if (params.name) {
     const searchName = params.name.toLowerCase();
@@ -953,7 +907,7 @@ export async function searchFeats(
     86_400_000,
   );
 
-  let matched = feats ?? [];
+  let matched = [...(feats ?? [])];
 
   if (params.name) {
     const searchName = params.name.toLowerCase();
@@ -1312,7 +1266,7 @@ export async function searchClasses(
     86_400_000,
   );
 
-  let matched = classes ?? [];
+  let matched = [...(classes ?? [])];
 
   if (params.className) {
     const searchName = params.className.toLowerCase();
@@ -1428,7 +1382,7 @@ export async function searchBackgrounds(
     86_400_000,
   );
 
-  let matched = backgrounds ?? [];
+  let matched = [...(backgrounds ?? [])];
 
   if (params.name) {
     const searchName = params.name.toLowerCase();
@@ -1482,7 +1436,7 @@ export async function searchClassFeatures(
     86_400_000,
   );
 
-  let matched = features ?? [];
+  let matched = [...(features ?? [])];
 
   if (params.name) {
     const searchName = params.name.toLowerCase();
@@ -1559,7 +1513,7 @@ export async function searchRacialTraits(
     86_400_000,
   );
 
-  let matched = traits ?? [];
+  let matched = [...(traits ?? [])];
 
   if (params.name) {
     const searchName = params.name.toLowerCase();

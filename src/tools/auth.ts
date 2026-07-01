@@ -1,4 +1,4 @@
-import { runAuthFlow } from "../../setup/auth-flow.js";
+import { runAuthFlow } from "../api/auth-flow.js";
 import { isAuthenticated, getCobaltToken } from "../api/auth.js";
 import type { DdbClient } from "../api/client.js";
 
@@ -32,7 +32,16 @@ export async function setupAuth(): Promise<CallToolResult> {
 }
 
 export async function checkAuth(_client: DdbClient): Promise<CallToolResult> {
-  const hasSession = await isAuthenticated();
+  let hasSession: boolean;
+  try {
+    hasSession = await isAuthenticated();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      content: [{ type: "text", text: `Authentication config error: ${message}` }],
+    };
+  }
+
   if (!hasSession) {
     return {
       content: [{ type: "text", text: "Not authenticated — run setup_auth to log in via browser." }],

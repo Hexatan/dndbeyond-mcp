@@ -1,6 +1,6 @@
 import { TtlCache } from "../cache/lru.js";
 import { CircuitBreaker, RateLimiter, withRetry, HttpError } from "../resilience/index.js";
-import { getCobaltToken, getAllCookies, buildAuthHeadersFromCookies } from "./auth.js";
+import { getCobaltToken, getAllCookies } from "./auth.js";
 
 export class DdbClient {
   private authExpired = false;
@@ -81,35 +81,32 @@ export class DdbClient {
   }
 
   private async requestRaw<T>(url: string, options: RequestInit): Promise<T> {
-    await this.rateLimiter.acquire();
-
-    return this.circuitBreaker.execute(() =>
-      withRetry(async () => {
-        const headers = await this.buildHeaders(url);
-        const response = await fetch(url, { ...options, headers });
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            this.authExpired = true;
-          }
-          throw new HttpError(
-            `D&D Beyond API error: ${response.status} ${response.statusText}`,
-            response.status,
-          );
-        }
-
-        return (await response.json()) as T;
-      })
-    );
+    return this.requestJson<T>(url, options, false);
   }
 
   private async request<T>(url: string, options: RequestInit): Promise<T> {
+    return this.requestJson<T>(url, options, true);
+  }
+
+  private async requestJson<T>(
+    url: string,
+    options: RequestInit,
+    unwrapEnvelope: boolean
+  ): Promise<T> {
     await this.rateLimiter.acquire();
 
     return this.circuitBreaker.execute(() =>
       withRetry(async () => {
         const headers = await this.buildHeaders(url);
-        const response = await fetch(url, { ...options, headers });
+        let response: Response;
+        try {
+          response = await fetch(url, { ...options, headers });
+        } catch (error) {
+          throw new Error(
+            `D&D Beyond API request failed for ${this.formatUrlForError(url)}: ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error }
+          );
+        }
 
         if (!response.ok) {
           if (response.status === 401) {
@@ -121,7 +118,17 @@ export class DdbClient {
           );
         }
 
-        const json = await response.json();
+        let json: unknown;
+        try {
+          json = await response.json();
+        } catch (error) {
+          throw new Error(
+            `D&D Beyond API returned invalid JSON for ${this.formatUrlForError(url)}: ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error }
+          );
+        }
+
+        if (!unwrapEnvelope) return json as T;
 
         // D&D Beyond APIs use two envelope formats:
         //   Character-service: { id, success, message, data }
@@ -131,8 +138,11 @@ export class DdbClient {
           // Character-service envelope: check `success` boolean
           if ("success" in json) {
             if (!json.success) {
+              const message = "message" in json && typeof json.message === "string"
+                ? json.message
+                : "Unknown error";
               throw new HttpError(
-                `D&D Beyond API error: ${json.message || "Unknown error"}`,
+                `D&D Beyond API error: ${message}`,
                 400,
               );
             }
@@ -147,6 +157,15 @@ export class DdbClient {
         return json as T;
       })
     );
+  }
+
+  private formatUrlForError(url: string): string {
+    try {
+      const parsed = new URL(url);
+      return `${parsed.hostname}${parsed.pathname}`;
+    } catch {
+      return url;
+    }
   }
 
   private async buildHeaders(url: string): Promise<Record<string, string>> {

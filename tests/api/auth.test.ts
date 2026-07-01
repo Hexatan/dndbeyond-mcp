@@ -49,12 +49,10 @@ describe("auth", () => {
       );
     });
 
-    it("shouldReturnNullWhenConfigFileIsInvalid", async () => {
+    it("shouldThrowWhenConfigFileIsInvalid", async () => {
       mockReadFile.mockResolvedValue("invalid json");
 
-      const result = await getCobaltSession();
-
-      expect(result).toBeNull();
+      await expect(getCobaltSession()).rejects.toThrow("Could not read auth config");
     });
 
     it("shouldReturnNullWhenCobaltSessionIsEmpty", async () => {
@@ -80,12 +78,12 @@ describe("auth", () => {
 
       expect(mockMkdir).toHaveBeenCalledWith(
         join(homedir(), ".dndbeyond-mcp"),
-        { recursive: true }
+        { recursive: true, mode: 0o700 }
       );
       expect(mockWriteFile).toHaveBeenCalledWith(
         join(homedir(), ".dndbeyond-mcp", "config.json"),
         expect.stringContaining("my-cobalt-session-456"),
-        "utf-8"
+        { encoding: "utf-8", mode: 0o600 }
       );
     });
 

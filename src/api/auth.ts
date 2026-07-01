@@ -16,35 +16,50 @@ interface AuthConfig {
   savedAt: string;
 }
 
-export async function getCobaltSession(): Promise<string | null> {
+function isMissingFileError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  ) || (error instanceof Error && error.message.includes("ENOENT"));
+}
+
+async function readAuthConfig(): Promise<AuthConfig | null> {
   try {
     const raw = await readFile(CONFIG_FILE, "utf-8");
-    const config: AuthConfig = JSON.parse(raw);
-    return config.cobaltSession || null;
-  } catch {
-    return null;
+    return JSON.parse(raw) as AuthConfig;
+  } catch (error) {
+    if (isMissingFileError(error)) return null;
+    throw new Error(
+      `Could not read auth config at ${CONFIG_FILE}. Run npm run setup to refresh it.`,
+      { cause: error }
+    );
   }
+}
+
+export async function getCobaltSession(): Promise<string | null> {
+  const config = await readAuthConfig();
+  return config?.cobaltSession || null;
 }
 
 export async function getAllCookies(): Promise<CookieEntry[]> {
-  try {
-    const raw = await readFile(CONFIG_FILE, "utf-8");
-    const config: AuthConfig = JSON.parse(raw);
-    return config.cookies || [];
-  } catch {
-    return [];
-  }
+  const config = await readAuthConfig();
+  return config?.cookies || [];
 }
 
 export async function saveAllCookies(cookies: CookieEntry[]): Promise<void> {
-  await mkdir(CONFIG_DIR, { recursive: true });
+  await mkdir(CONFIG_DIR, { recursive: true, mode: 0o700 });
   const cobalt = cookies.find((c) => c.name === "CobaltSession");
   const config: AuthConfig = {
     cobaltSession: cobalt?.value || "",
     cookies,
     savedAt: new Date().toISOString(),
   };
-  await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
+  await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
 }
 
 export async function saveCobaltSession(cookie: string): Promise<void> {

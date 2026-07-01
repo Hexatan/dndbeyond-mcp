@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { searchRaces, searchBackgrounds } from "../../src/tools/reference.js";
 import { DdbClient } from "../../src/api/client.js";
-import { RaceSearchParams, BackgroundSearchParams } from "../../src/types/reference.js";
 
 // The live game-data/races endpoint returns objects keyed by fullName/baseName,
 // not name (see searchRaces in src/tools/reference.ts and commit b67d04f).
