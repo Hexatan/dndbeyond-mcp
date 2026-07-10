@@ -24,6 +24,7 @@ import {
   sumModifierBonuses,
 } from "../utils/character-calculations.js";
 import { findAccessibleCharacterByName } from "../utils/character-list.js";
+import { getCharacterSpells } from "../utils/character-spells.js";
 import { stripHtml } from "../utils/html.js";
 
 export type CharacterSheetTheme = "light" | "color" | "inverted";
@@ -65,8 +66,32 @@ interface NamedDetail {
   detail: string;
 }
 
+interface DetailSection {
+  title: string;
+  entries: NamedDetail[];
+}
+
+interface DetailSectionChunk extends DetailSection {
+  height: number;
+}
+
 interface SpellEntry extends NamedDetail {
   level: number;
+  status: string;
+  activation: string;
+  range: string;
+  saveAttack: string;
+  components: string;
+  duration: string;
+}
+
+interface InventoryEntry {
+  name: string;
+  quantity: number;
+  weight: number;
+  value: string;
+  location: string;
+  state: string;
 }
 
 interface ProficiencyCategories {
@@ -103,9 +128,10 @@ export interface CharacterSheetData {
   features: NamedDetail[];
   racialTraits: NamedDetail[];
   feats: NamedDetail[];
-  equipment: string[];
-  inventory: Array<{ name: string; quantity: number; weight: number; value: string; equipped: boolean }>;
+  inventory: InventoryEntry[];
+  carrying: { weight: number; capacity: number; pushDrag: number };
   currencies: SheetField[];
+  appearance: SheetField[];
   traits: SheetField[];
   notes: SheetField[];
   deathSaves: { successes: number; failures: number };
@@ -125,7 +151,6 @@ const MIN_TEXT_TO_LINE_GAP = 16;
 const PROFICIENCY_LABEL_TO_VALUE_GAP = 9;
 const PROFICIENCY_VALUE_LINE_H = 8;
 const PROFICIENCY_SECTION_GAP = 8;
-const DETAIL_ROW_H = 11;
 const BLACK = "black";
 const MID = "mid";
 const LIGHT = "light";
@@ -154,6 +179,24 @@ const ABILITY_FULL_NAMES: Record<number, string> = {
   4: "Intelligence",
   5: "Wisdom",
   6: "Charisma",
+};
+
+const ALIGNMENTS: Record<number, string> = {
+  1: "Lawful Good",
+  2: "Neutral Good",
+  3: "Chaotic Good",
+  4: "Lawful Neutral",
+  5: "Neutral",
+  6: "Chaotic Neutral",
+  7: "Lawful Evil",
+  8: "Neutral Evil",
+  9: "Chaotic Evil",
+};
+
+const CHARACTER_SIZES: Record<number, string> = {
+  3: "Small",
+  4: "Medium",
+  10: "Medium",
 };
 
 const SAVING_THROW_SUBTYPES: Record<number, string> = {
@@ -507,6 +550,11 @@ class PdfElements {
     return lines.length;
   }
 
+  wrappedLineCount(w: number, value: string, size = 7.2, bold = false): number {
+    const font = bold ? this.fonts.bold : this.fonts.regular;
+    return wrapText(cleanPdfText(value), font, this.fontSize(size), this.w(w)).length;
+  }
+
   fitText(x: number, y: number, w: number, value: string, size = 8, bold = false, color?: string | PdfColor | null): void {
     const font = bold ? this.fonts.bold : this.fonts.regular;
     const fontSize = this.fontSize(size);
@@ -556,6 +604,7 @@ export async function generateCharacterSheetPdf(
   const theme = params.theme ?? "light";
   const data = extractCharacterSheetData(character);
   const pdfBytes = await renderCharacterSheetPdf(data, theme);
+  const pageCount = (await PDFDocument.load(pdfBytes)).getPageCount();
   const blob = Buffer.from(pdfBytes).toString("base64");
 
   return {
@@ -572,7 +621,7 @@ export async function generateCharacterSheetPdf(
     structuredContent: {
       characterId: data.id,
       characterName: data.name,
-      pageCount: 8,
+      pageCount,
       theme,
       mimeType: "application/pdf",
     },
@@ -582,10 +631,10 @@ export async function generateCharacterSheetPdf(
 export function extractCharacterSheetData(char: DdbCharacter): CharacterSheetData {
   const level = computeLevel(char);
   const proficiencyBonus = calculateProficiencyBonus(level);
-  const allSpells = getAllSpells(char);
-  const preparedSpells = allSpells.filter((spell) => spell.prepared || spell.alwaysPrepared);
+  const allSpells = getCharacterSpells(char);
   const spellcasting = computeSpellcasting(char, allSpells);
   const proficiencies = buildProficiencies(char);
+  const inventory = buildInventory(char);
 
   return {
     id: char.id,
@@ -607,10 +656,10 @@ export function extractCharacterSheetData(char: DdbCharacter): CharacterSheetDat
     saves: buildSaves(char, proficiencyBonus),
     skills: buildSkills(char, proficiencyBonus),
     spellcasting,
-    spellsByLevel: groupSpells(preparedSpells, level),
+    spellsByLevel: groupSpells(allSpells, level, spellcasting),
     spellSlots: calculateSpellSlots(char),
     pactMagic: char.pactMagic && char.pactMagic.available > 0 ? char.pactMagic : null,
-    actionRows: buildActionRows(char, preparedSpells, spellcasting, proficiencyBonus),
+    actionRows: buildActionRows(char, allSpells, spellcasting, proficiencyBonus),
     hitDice: buildHitDice(char),
     resources: buildResources(char),
     defenses: buildDefenses(char),
@@ -618,22 +667,14 @@ export function extractCharacterSheetData(char: DdbCharacter): CharacterSheetDat
     features: buildFeatures(char),
     racialTraits: (char.race.racialTraits ?? []).map((trait) => ({
       name: trait.definition.name,
-      detail: shortDetail(trait.definition.snippet || trait.definition.description),
+      detail: featureDetail(char, trait.definition.snippet || trait.definition.description),
     })),
     feats: (char.feats ?? []).map((feat) => ({
       name: feat.definition.name,
-      detail: shortDetail(feat.definition.snippet || feat.definition.description || feat.definition.prerequisite),
+      detail: featureDetail(char, feat.definition.snippet || feat.definition.description || feat.definition.prerequisite),
     })),
-    equipment: char.inventory
-      .filter((item) => item.equipped)
-      .map((item) => item.quantity > 1 ? `${item.definition.name} x${item.quantity}` : item.definition.name),
-    inventory: char.inventory.map((item) => ({
-      name: item.definition.name,
-      quantity: item.quantity,
-      weight: item.definition.weight ?? 0,
-      value: item.definition.cost == null ? "" : String(item.definition.cost),
-      equipped: item.equipped,
-    })),
+    inventory,
+    carrying: buildCarrying(char, inventory),
     currencies: [
       { label: "CP", value: String(char.currencies.cp ?? 0) },
       { label: "SP", value: String(char.currencies.sp ?? 0) },
@@ -641,6 +682,7 @@ export function extractCharacterSheetData(char: DdbCharacter): CharacterSheetDat
       { label: "GP", value: String(char.currencies.gp ?? 0) },
       { label: "PP", value: String(char.currencies.pp ?? 0) },
     ],
+    appearance: buildAppearance(char),
     traits: [
       { label: "Personality", value: char.traits.personalityTraits ?? "" },
       { label: "Ideals", value: char.traits.ideals ?? "" },
@@ -671,22 +713,23 @@ export async function renderCharacterSheetPdf(data: CharacterSheetData, themeNam
   };
   const theme = colorTheme(themeName);
   const colorMode = themeName === "color";
-  const pages = [
-    drawCorePage,
-    drawFeaturesPage,
-    drawSpellPage,
-    drawAdventureNotesPage,
-    drawLevelUpPage,
-    drawInventoryPage,
-    drawDowntimePage,
-    drawRelationshipsPage,
-  ];
-
-  for (const [idx, drawPage] of pages.entries()) {
+  const addPage = (): PdfElements => {
     const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
     const pdf = new PdfElements(page, fonts, theme, colorMode);
     pdf.background();
-    drawPage(pdf, data);
+    return pdf;
+  };
+
+  drawCorePage(addPage(), data);
+  drawFeaturePages(addPage, data);
+  if (data.spellsByLevel.length > 0 || data.spellSlots.length > 0 || data.pactMagic) {
+    drawSpellPages(addPage, data);
+  }
+  drawInventoryPages(addPage, data);
+  drawDetailsPages(addPage, data);
+
+  for (const [idx, page] of pdfDoc.getPages().entries()) {
+    const pdf = new PdfElements(page, fonts, theme, colorMode);
     pdf.centered(VIRTUAL_W - MARGIN - 36, 8, 36, String(idx + 1), 6.5, false, MID);
   }
 
@@ -832,6 +875,10 @@ function drawCombat(pdf: PdfElements, data: CharacterSheetData): void {
   pdf.text(deathX, y + 167, "EXHAUSTION", 5.6, true, pdf.accent("CON", MID));
   for (let i = 0; i < 6; i++) pdf.checkbox(deathX + 58 + i * 12, y + 165, 8, false, pdf.accent("CON", MID));
 
+  if (data.resources.length > 0) {
+    pdf.fitText(x, y + 149, VIRTUAL_W - 2 * MARGIN - 16, `Resources: ${data.resources.join(" | ")}`, 6.8, true, MID);
+  }
+
   const headers = ["Attack / Cantrip", "Bonus", "Damage / Type", "Notes"];
   const widths = [150, 60, 110, 170];
   let xx = x;
@@ -857,230 +904,315 @@ function drawCombat(pdf: PdfElements, data: CharacterSheetData): void {
   }
 }
 
-function drawFeaturesPage(pdf: PdfElements, data: CharacterSheetData): void {
-  pdf.pageTitle("Character Sheet", "Features, resources, equipment, and campaign notes");
-  const topY = VIRTUAL_H - 40;
-  const bottomY = 24;
-  const leftW = 272;
-  const rightX = MARGIN + leftW + BOX_GAP;
-  const rightW = VIRTUAL_W - MARGIN - rightX;
-
-  const row1H = 200;
-  const row1Y = topY - row1H;
-  const featureEntries = [
-    ...data.features,
-    ...data.racialTraits.map((trait) => ({ ...trait, name: `Species: ${trait.name}` })),
-    ...data.feats.map((feat) => ({ ...feat, name: `Feat: ${feat.name}` })),
-  ];
-  pdf.box(MARGIN, row1Y, VIRTUAL_W - 2 * MARGIN, row1H, "Class & Species Features");
-  const featureRows = drawDetailList(pdf, MARGIN + 8, row1Y + 10, VIRTUAL_W - 2 * MARGIN - 16, row1H - 34, featureEntries);
-  pdf.writingLines(MARGIN, row1Y, VIRTUAL_W - 2 * MARGIN, row1H, WRITING_LINE_SPACING, writingTopPad(featureRows, DETAIL_ROW_H));
-
-  const row2H = 208;
-  const row2Y = row1Y - BOX_GAP - row2H;
-  pdf.box(MARGIN, row2Y, leftW, row2H, "Equipment");
-  const equipmentLines = pdf.textBlock(MARGIN + 8, row2Y + 10, leftW - 16, row2H - 34, data.equipment.join("\n"), 7.1);
-  pdf.writingLines(MARGIN, row2Y, leftW, row2H, WRITING_LINE_SPACING, writingTopPad(equipmentLines));
-
-  pdf.box(rightX, row2Y, rightW, row2H, "Personality, Ideals, Bonds, Flaws");
-  const traitLines = pdf.textBlock(rightX + 8, row2Y + 10, rightW - 16, row2H - 34, fieldsToText(data.traits), 6.8);
-  pdf.writingLines(rightX, row2Y, rightW, row2H, WRITING_LINE_SPACING, writingTopPad(traitLines));
-
-  const notesH = row2Y - BOX_GAP - bottomY;
-  pdf.box(MARGIN, bottomY, VIRTUAL_W - 2 * MARGIN, notesH, "Campaign Notes");
-  const noteLines = pdf.textBlock(MARGIN + 8, bottomY + 10, VIRTUAL_W - 2 * MARGIN - 16, notesH - 34, fieldsToText(data.notes), 6.8);
-  pdf.writingLines(MARGIN, bottomY, VIRTUAL_W - 2 * MARGIN, notesH, WRITING_LINE_SPACING, writingTopPad(noteLines));
+function drawFeaturePages(addPage: () => PdfElements, data: CharacterSheetData): void {
+  const sections = [
+    { title: "Class Features", entries: data.features },
+    { title: "Species Traits", entries: data.racialTraits },
+    { title: "Feats", entries: data.feats },
+  ].filter((section) => section.entries.length > 0);
+  drawTwoColumnSectionPages(addPage, "Features & Traits", "Complete D&D Beyond feature summaries", sections);
 }
 
-function drawSpellPage(pdf: PdfElements, data: CharacterSheetData): void {
-  pdf.pageTitle("Spellcasting Sheet", "Clean spell tracker for handwriting on e-ink");
+function drawTwoColumnSectionPages(
+  addPage: () => PdfElements,
+  title: string,
+  subtitle: string,
+  sections: DetailSection[],
+): void {
+  if (sections.length === 0) return;
   const topY = VIRTUAL_H - 40;
   const bottomY = 24;
-  const fieldY = topY - 24;
-  pdf.field(MARGIN, fieldY, 116, "Spellcasting ability", data.spellcasting.ability, 24);
-  pdf.field(MARGIN + 126, fieldY, 86, "Save DC", data.spellcasting.saveDc, 24);
-  pdf.field(MARGIN + 222, fieldY, 86, "Attack bonus", data.spellcasting.attackBonus, 24);
-  pdf.field(MARGIN + 318, fieldY, VIRTUAL_W - MARGIN - (MARGIN + 318), "Prepared / known notes", "", 24);
+  const capacity = topY - bottomY;
+  const columnGap = BOX_GAP;
+  const colW = (VIRTUAL_W - 2 * MARGIN - columnGap) / 2;
+  let chunks: DetailSectionChunk[] | null = null;
+  let chunkIndex = 0;
+  let pageNumber = 0;
 
-  const slotsH = 84;
-  const slotsY = fieldY - BOX_GAP - slotsH;
-  pdf.box(MARGIN, slotsY, VIRTUAL_W - 2 * MARGIN, slotsH, "Spell Slots");
-  let x = MARGIN + 10;
-  const slots = data.spellSlots.filter((slot) => slot.available > 0).sort((a, b) => a.level - b.level);
-  const slotColumnCount = slots.length + (data.pactMagic ? 1 : 0);
-  const slotPitch = Math.min(58, (VIRTUAL_W - 2 * MARGIN - 24) / Math.max(1, slotColumnCount));
-  if (slots.length === 0 && !data.pactMagic) {
-    pdf.text(x, slotsY + 36, "No spell slots", 7.2, true, MID);
-  }
-  for (const slot of slots) {
-    pdf.text(x, slotsY + 48, `L${slot.level}`, 7.2, true);
-    for (let n = 0; n < slot.available; n++) {
-      pdf.checkbox(x + n * 12, slotsY + 26, 8, n < slot.available - slot.used);
+  while (chunks === null || chunkIndex < chunks.length) {
+    const pdf = addPage();
+    chunks ??= buildDetailSectionChunks(pdf, sections, colW, capacity);
+    pdf.pageTitle(pageNumber++ === 0 ? title : `${title} (continued)`, subtitle);
+
+    let pageEnd = chunkIndex;
+    let columnSplit = 1;
+    for (let end = chunkIndex + 1; end <= chunks.length; end++) {
+      const split = balancedSectionSplit(chunks.slice(chunkIndex, end), capacity);
+      if (split === null) break;
+      pageEnd = end;
+      columnSplit = split;
     }
-    x += slotPitch;
+
+    const pageChunks = chunks.slice(chunkIndex, pageEnd);
+    drawDetailSectionColumn(pdf, MARGIN, topY, bottomY, colW, pageChunks.slice(0, columnSplit));
+    drawDetailSectionColumn(
+      pdf,
+      MARGIN + colW + columnGap,
+      topY,
+      bottomY,
+      colW,
+      pageChunks.slice(columnSplit),
+    );
+    chunkIndex = pageEnd;
   }
-  if (data.pactMagic) {
-    pdf.text(x + 8, slotsY + 48, `Pact L${data.pactMagic.level}`, 7.2, true, MID);
-    for (let n = 0; n < data.pactMagic.available; n++) {
-      pdf.checkbox(x + 8 + n * 12, slotsY + 26, 8, n < data.pactMagic.available - data.pactMagic.used);
+}
+
+function buildDetailSectionChunks(
+  pdf: PdfElements,
+  sections: DetailSection[],
+  width: number,
+  capacity: number,
+): DetailSectionChunk[] {
+  const chunks: DetailSectionChunk[] = [];
+  for (const section of sections) {
+    let entryIndex = 0;
+    let part = 0;
+    while (entryIndex < section.entries.length) {
+      const entries: NamedDetail[] = [];
+      let entriesHeight = 0;
+      while (entryIndex < section.entries.length) {
+        const entry = section.entries[entryIndex];
+        const height = detailEntryHeight(pdf, width, entry);
+        if (entries.length > 0 && 30 + entriesHeight + height > capacity) break;
+        entries.push(entry);
+        entriesHeight += height;
+        entryIndex++;
+      }
+      chunks.push({
+        title: part++ === 0 ? section.title : `${section.title} (continued)`,
+        entries,
+        height: Math.min(capacity, 30 + entriesHeight),
+      });
     }
   }
-
-  const colW = (VIRTUAL_W - 2 * MARGIN - BOX_GAP) / 2;
-  const upperH = 286;
-  const upperY = slotsY - BOX_GAP - upperH;
-  spellBox(pdf, MARGIN, upperY, colW, upperH, "Cantrips & Prepared Spells", data, [0]);
-  spellBox(pdf, MARGIN + colW + BOX_GAP, upperY, colW, upperH, "1st-3rd Level Spells", data, [1, 2, 3]);
-  const lowerH = upperY - BOX_GAP - bottomY;
-  spellBox(pdf, MARGIN, bottomY, colW, lowerH, "4th-6th Level Spells", data, [4, 5, 6]);
-  spellBox(pdf, MARGIN + colW + BOX_GAP, bottomY, colW, lowerH, "7th-9th Level Spells", data, [7, 8, 9]);
+  return chunks;
 }
 
-function drawAdventureNotesPage(pdf: PdfElements): void {
-  pdf.pageTitle("Adventure Notes", "Session log, NPCs, locations, loot, and unresolved threads");
-  const topY = VIRTUAL_H - 40;
+function balancedSectionSplit(chunks: DetailSectionChunk[], capacity: number): number | null {
+  let bestSplit: number | null = null;
+  let bestDifference = Number.POSITIVE_INFINITY;
+  for (let split = 1; split <= chunks.length; split++) {
+    const leftHeight = detailColumnHeight(chunks.slice(0, split));
+    const rightHeight = detailColumnHeight(chunks.slice(split));
+    if (leftHeight > capacity || rightHeight > capacity) continue;
+    const difference = Math.abs(leftHeight - rightHeight);
+    if (difference < bestDifference) {
+      bestDifference = difference;
+      bestSplit = split;
+    }
+  }
+  return bestSplit;
+}
+
+function detailColumnHeight(chunks: DetailSectionChunk[]): number {
+  return chunks.reduce((total, chunk) => total + chunk.height, 0) + Math.max(0, chunks.length - 1) * BOX_GAP;
+}
+
+function detailEntryHeight(pdf: PdfElements, width: number, entry: NamedDetail): number {
+  const lineCount = entry.detail ? pdf.wrappedLineCount(width - 16, entry.detail, 6.5) : 0;
+  return Math.max(24, 20 + lineCount * 8);
+}
+
+function drawDetailSectionColumn(
+  pdf: PdfElements,
+  x: number,
+  topY: number,
+  bottomY: number,
+  width: number,
+  chunks: DetailSectionChunk[],
+): void {
+  const capacity = topY - bottomY;
+  if (chunks.length === 0) {
+    pdf.rect(x, bottomY, width, capacity, 0.55, MID);
+    return;
+  }
+
+  const extraHeight = capacity - detailColumnHeight(chunks);
+  let cursor = topY;
+  for (const [index, chunk] of chunks.entries()) {
+    const height = chunk.height + (index === chunks.length - 1 ? extraHeight : 0);
+    const y = cursor - height;
+    pdf.box(x, y, width, height, chunk.title);
+    let entryTop = cursor - 24;
+    for (const entry of chunk.entries) {
+      const entryHeight = detailEntryHeight(pdf, width, entry);
+      pdf.text(x + 8, entryTop - 9, entry.name, 7.2, true);
+      if (entry.detail) pdf.wrappedText(x + 8, entryTop - 19, width - 16, entry.detail, 6.5, 8);
+      pdf.line(x + 8, entryTop - entryHeight + 3, x + width - 8, entryTop - entryHeight + 3, 0.25, LIGHT);
+      entryTop -= entryHeight;
+    }
+    cursor = y - BOX_GAP;
+  }
+}
+
+function drawSpellPages(addPage: () => PdfElements, data: CharacterSheetData): void {
+  const rowH = 29;
+  const groupH = 22;
+  const groupGap = BOX_GAP;
   const bottomY = 24;
-  const colW = (VIRTUAL_W - 2 * MARGIN - BOX_GAP) / 2;
-  const topH = 234;
-  const topBoxY = topY - topH;
-  for (const [idx, label] of ["Session Log", "NPCs & Factions", "Quests & Loose Ends", "Loot, Clues & Maps"].entries()) {
-    const x = MARGIN + (idx % 2) * (colW + BOX_GAP);
-    const y = idx < 2 ? topBoxY : bottomY;
-    const h = idx < 2 ? topH : topBoxY - BOX_GAP - bottomY;
-    pdf.box(x, y, colW, h, label);
-    pdf.writingLines(x, y, colW, h);
+  let groupIndex = 0;
+  let spellIndex = 0;
+  let pageNumber = 0;
+
+  while (groupIndex < data.spellsByLevel.length) {
+    const pdf = addPage();
+    pdf.pageTitle(pageNumber++ === 0 ? "Spellbook" : "Spellbook (continued)", "P = prepared or always prepared, K = known");
+    drawSpellHeader(pdf, data);
+    let cursor = 650;
+
+    while (groupIndex < data.spellsByLevel.length) {
+      const group = data.spellsByLevel[groupIndex];
+      const visibleRows = Math.floor((cursor - bottomY - groupH) / rowH);
+      if (visibleRows < 1) break;
+      const rowCount = Math.min(group.spells.length - spellIndex, visibleRows);
+      const groupHeight = groupH + rowCount * rowH;
+      const label = spellIndex === 0 ? group.label : `${group.label} (continued)`;
+      drawSpellGroupBox(pdf, data, group.level, label, cursor, groupHeight);
+
+      let rowTop = cursor - groupH;
+      for (let row = 0; row < rowCount; row++) {
+        drawSpellRow(pdf, group.spells[spellIndex++], rowTop, rowH);
+        rowTop -= rowH;
+      }
+      cursor -= groupHeight + groupGap;
+      if (spellIndex >= group.spells.length) {
+        groupIndex++;
+        spellIndex = 0;
+      } else {
+        break;
+      }
+    }
+    pdf.rect(MARGIN, 24, VIRTUAL_W - 2 * MARGIN, VIRTUAL_H - 64, 0.6, MID);
   }
 }
 
-function drawLevelUpPage(pdf: PdfElements, data: CharacterSheetData): void {
-  pdf.pageTitle("Level Up", "Class choices, HP, new features, spells, ASI, and feat notes");
-  const topY = VIRTUAL_H - 52;
+function drawSpellHeader(pdf: PdfElements, data: CharacterSheetData): void {
+  const fieldY = 690;
+  const fieldX = MARGIN + 8;
+  pdf.field(fieldX, fieldY, 116, "Spellcasting ability", data.spellcasting.ability, 24);
+  pdf.field(fieldX + 126, fieldY, 86, "Save DC", data.spellcasting.saveDc, 24);
+  pdf.field(fieldX + 222, fieldY, 86, "Attack bonus", data.spellcasting.attackBonus, 24);
+  const labels = [
+    [MARGIN + 4, "", 16],
+    [MARGIN + 24, "Spell", 126],
+    [MARGIN + 154, "Save / Atk", 58],
+    [MARGIN + 216, "Cast", 52],
+    [MARGIN + 272, "Range", 100],
+    [MARGIN + 376, "Comp", 40],
+    [MARGIN + 420, "Duration", 132],
+  ] as const;
+  for (const [x, label, width] of labels) pdf.fitText(x, 668, width, label.toUpperCase(), 5.8, true, MID);
+  pdf.line(MARGIN, 662, VIRTUAL_W - MARGIN, 662, 0.55, MID);
+}
+
+function drawSpellGroupBox(
+  pdf: PdfElements,
+  data: CharacterSheetData,
+  level: number,
+  label: string,
+  top: number,
+  height: number,
+): void {
+  pdf.box(MARGIN, top - height, VIRTUAL_W - 2 * MARGIN, height, label);
+  if (level === 0) return;
+
+  const slot = data.spellSlots.find((entry) => entry.level === level);
+  const slotCount = slot?.available ?? 0;
+  const pactCount = data.pactMagic?.level === level ? data.pactMagic.available : 0;
+  const slotWidth = slotCount > 0 ? 34 + slotCount * 12 : 0;
+  const pactWidth = pactCount > 0 ? 28 + pactCount * 12 : 0;
+  const sectionGap = slotWidth > 0 && pactWidth > 0 ? 8 : 0;
+  let x = VIRTUAL_W - MARGIN - 8 - slotWidth - sectionGap - pactWidth;
+
+  if (slotCount > 0) {
+    pdf.text(x, top - 12, "SLOTS", 5.8, true, MID);
+    x += 34;
+    for (let index = 0; index < slotCount; index++) {
+      pdf.checkbox(x + index * 12, top - 15, 8, false);
+    }
+    x += slotCount * 12 + sectionGap;
+  }
+  if (pactCount > 0) {
+    pdf.text(x, top - 12, "PACT", 5.8, true, MID);
+    x += 28;
+    for (let index = 0; index < pactCount; index++) {
+      pdf.checkbox(x + index * 12, top - 15, 8, false);
+    }
+  }
+}
+
+function drawSpellRow(pdf: PdfElements, spell: SpellEntry, top: number, height: number): void {
+  pdf.text(MARGIN + 5, top - 10, spell.status, 6.4, true, MID);
+  pdf.fitText(MARGIN + 24, top - 10, 126, spell.name, 7, true);
+  pdf.fitText(MARGIN + 154, top - 10, 58, spell.saveAttack, 6.2);
+  pdf.fitText(MARGIN + 216, top - 10, 52, spell.activation, 6.2);
+  pdf.fitText(MARGIN + 272, top - 10, 100, spell.range, 6.2);
+  pdf.fitText(MARGIN + 376, top - 10, 40, spell.components, 6.2);
+  pdf.fitText(MARGIN + 420, top - 10, 132, spell.duration, 6.2);
+  pdf.fitText(MARGIN + 24, top - 22, VIRTUAL_W - 2 * MARGIN - 28, spell.detail, 5.8, false, MID);
+  pdf.line(MARGIN, top - height, VIRTUAL_W - MARGIN, top - height, 0.25, LIGHT);
+}
+
+function drawInventoryPages(addPage: () => PdfElements, data: CharacterSheetData): void {
+  const widths = [240, 44, 62, 120, 94];
+  const rowH = 24;
   const bottomY = 24;
-  const fieldW = (VIRTUAL_W - 2 * MARGIN - 5 * GAP) / 6;
-  const fields = [
-    ["Current", String(data.level)],
-    ["New", ""],
-    ["Class", data.classes],
-    ["Subclass", ""],
-    ["HP roll", ""],
-    ["Prof.", signed(data.proficiencyBonus)],
-  ];
-  let x = MARGIN;
-  for (const [label, value] of fields) {
-    pdf.field(x, topY - 22, fieldW, label, value, 22);
-    x += fieldW + GAP;
-  }
+  let itemIndex = 0;
+  let pageNumber = 0;
 
-  const leftW = 276;
-  const rightX = MARGIN + leftW + BOX_GAP;
-  const rightW = VIRTUAL_W - MARGIN - rightX;
-  const upperH = 238;
-  const upperY = topY - 22 - BOX_GAP - upperH;
-  pdf.box(MARGIN, upperY, leftW, upperH, "Class Choices");
-  for (const [idx, label] of ["Features", "Subclass", "Invocations / Fighting Style", "Other choice"].entries()) {
-    labeledLine(pdf, MARGIN + 8, upperY + upperH - 44 - idx * 34, leftW - 16, label);
-  }
-  pdf.writingLines(MARGIN, upperY, leftW, upperH - 146, 152);
-
-  pdf.box(rightX, upperY, rightW, upperH, "ASI / Feat");
-  pdf.field(rightX + 8, upperY + upperH - 50, 82, "Ability 1", "", 24);
-  pdf.field(rightX + 100, upperY + upperH - 50, 82, "Ability 2", "", 24);
-  pdf.field(rightX + 192, upperY + upperH - 50, rightW - 200, "Feat", "", 24);
-  pdf.writingLines(rightX, upperY, rightW, upperH - 82, 16, 96);
-
-  const lowerH = upperY - BOX_GAP - bottomY;
-  const lowerW = (VIRTUAL_W - 2 * MARGIN - BOX_GAP) / 2;
-  pdf.box(MARGIN, bottomY, lowerW, lowerH, "New Spells");
-  pdf.table(MARGIN + 8, bottomY + 12, [102, 42, 42, lowerW - 202], 22, 7, ["Spell", "Lvl", "Prep", "Notes"]);
-  pdf.box(MARGIN + lowerW + BOX_GAP, bottomY, lowerW, lowerH, "Level Notes");
-  pdf.writingLines(MARGIN + lowerW + BOX_GAP, bottomY, lowerW, lowerH);
+  do {
+    const firstPage = pageNumber === 0;
+    const pdf = addPage();
+    pdf.pageTitle(firstPage ? "Inventory" : "Inventory (continued)", "Complete D&D Beyond equipment and currency");
+    pdf.rect(MARGIN, 24, VIRTUAL_W - 2 * MARGIN, VIRTUAL_H - 64, 0.6, MID);
+    const tableTop = firstPage ? 635 : 716;
+    if (firstPage) drawInventorySummary(pdf, data);
+    const visibleRows = Math.floor((tableTop - bottomY - 18) / rowH);
+    const fittedRowH = (tableTop - bottomY - 18) / visibleRows;
+    const itemCount = Math.min(data.inventory.length - itemIndex, visibleRows);
+    pdf.table(MARGIN, bottomY, widths, fittedRowH, visibleRows, ["Item", "Qty", "Weight", "Location", "State"]);
+    for (let row = 0; row < itemCount; row++) {
+      const item = data.inventory[itemIndex + row];
+      const y = bottomY + fittedRowH * (visibleRows - row - 1) + 7;
+      pdf.fitText(MARGIN + 5, y, widths[0] - 10, item.name, 6.8, true);
+      pdf.centered(MARGIN + widths[0], y, widths[1], String(item.quantity), 6.6);
+      pdf.centered(MARGIN + widths[0] + widths[1], y, widths[2], formatWeight(item.weight), 6.6);
+      pdf.fitText(MARGIN + widths[0] + widths[1] + widths[2] + 4, y, widths[3] - 8, item.location, 6.4);
+      pdf.fitText(MARGIN + widths[0] + widths[1] + widths[2] + widths[3] + 4, y, widths[4] - 8, item.state, 6.4);
+    }
+    itemIndex += itemCount;
+    pageNumber++;
+  } while (itemIndex < data.inventory.length);
 }
 
-function drawInventoryPage(pdf: PdfElements, data: CharacterSheetData): void {
-  pdf.pageTitle("Inventory", "Equipment, attunement, consumables, coins, and carrying capacity");
-  const topY = VIRTUAL_H - 40;
-  const bottomY = 24;
-  const capH = 84;
-  const capY = topY - capH;
-  pdf.box(MARGIN, capY, VIRTUAL_W - 2 * MARGIN, capH, "Carrying Capacity");
-  let x = MARGIN + 8;
-  const strength = data.abilities.find((ability) => ability.label === "STR")?.value ?? "";
-  for (const [label, value] of [["Strength", strength], ["Capacity", ""], ["Current", ""], ["Push / drag", ""], ["Lifestyle", ""]]) {
-    pdf.field(x, capY + 18, 96, label, value, 28);
-    x += 108;
-  }
-
-  const tableY = capY - BOX_GAP - 318;
-  pdf.box(MARGIN, tableY, VIRTUAL_W - 2 * MARGIN, 318, "Equipment");
-  pdf.table(MARGIN + 8, tableY + 12, [160, 40, 44, 86, 76, 142], 22, 12, ["Item", "Qty", "Wt", "Where", "Value", "Notes"]);
-  for (const [idx, item] of data.inventory.slice(0, 12).entries()) {
-    const rowY = tableY + 12 + 22 * (11 - idx) + 7;
-    pdf.fitText(MARGIN + 12, rowY, 150, item.name, 6.7);
-    pdf.centered(MARGIN + 168, rowY, 36, String(item.quantity), 6.7);
-    pdf.centered(MARGIN + 210, rowY, 40, item.weight ? String(item.weight) : "", 6.7);
-    pdf.fitText(MARGIN + 254, rowY, 78, item.equipped ? "Equipped" : "", 6.7);
-    pdf.fitText(MARGIN + 340, rowY, 68, item.value, 6.7);
-  }
-
-  const lowerH = tableY - BOX_GAP - bottomY;
-  const leftW = 274;
-  const rightX = MARGIN + leftW + BOX_GAP;
-  const rightW = VIRTUAL_W - MARGIN - rightX;
-  pdf.box(MARGIN, bottomY, leftW, lowerH, "Attunement");
-  for (let idx = 0; idx < 3; idx++) {
-    pdf.field(MARGIN + 8, bottomY + lowerH - 50 - idx * 42, leftW - 16, `Slot ${idx + 1}`, "", 24);
-  }
-
-  pdf.box(rightX, bottomY, rightW, lowerH, "Consumables & Coins");
-  for (const [idx, coin] of data.currencies.entries()) {
-    pdf.field(rightX + 8 + idx * 47, bottomY + lowerH - 50, 38, coin.label, coin.value, 22);
-  }
-  pdf.table(rightX + 8, bottomY + 14, [112, 42, rightW - 170], 23, 8, ["Item", "Qty", "Notes"]);
-}
-
-function drawDowntimePage(pdf: PdfElements): void {
-  pdf.pageTitle("Downtime", "Projects, crafting, training, contacts, and lifestyle costs");
-  const topY = VIRTUAL_H - 40;
-  const bottomY = 24;
-  const projectH = 314;
-  const projectY = topY - projectH;
-  pdf.box(MARGIN, projectY, VIRTUAL_W - 2 * MARGIN, projectH, "Projects");
-  pdf.table(MARGIN + 8, projectY + 12, [148, 134, 72, 72, 122], 24, 10, ["Project", "Goal", "Days", "Cost", "Next Step"]);
-
-  const lowerH = projectY - BOX_GAP - bottomY;
-  const colW = (VIRTUAL_W - 2 * MARGIN - 2 * BOX_GAP) / 3;
-  for (const [idx, label] of ["Contacts", "Training / Craft", "Lifestyle"].entries()) {
-    const x = MARGIN + idx * (colW + BOX_GAP);
-    pdf.box(x, bottomY, colW, lowerH, label);
-    pdf.writingLines(x, bottomY, colW, lowerH);
+function drawInventorySummary(pdf: PdfElements, data: CharacterSheetData): void {
+  const y = 650;
+  pdf.box(MARGIN, y, VIRTUAL_W - 2 * MARGIN, 78, "Carrying & Currency");
+  pdf.field(MARGIN + 8, y + 18, 88, "Carried", `${formatWeight(data.carrying.weight)} / ${formatWeight(data.carrying.capacity)}`, 28);
+  pdf.field(MARGIN + 104, y + 18, 82, "Push / drag", formatWeight(data.carrying.pushDrag), 28);
+  for (const [index, coin] of data.currencies.entries()) {
+    pdf.field(MARGIN + 198 + index * 70, y + 18, 60, coin.label, coin.value, 28);
   }
 }
 
-function drawRelationshipsPage(pdf: PdfElements): void {
-  pdf.pageTitle("Relationships", "Allies, rivals, patrons, factions, debts, and secrets");
-  const topY = VIRTUAL_H - 40;
-  const bottomY = 24;
-  const colW = (VIRTUAL_W - 2 * MARGIN - BOX_GAP) / 2;
-  const rowH = (topY - bottomY - 2 * BOX_GAP) / 3;
-  const labels = ["Allies", "Rivals", "Patrons", "Factions", "Debts", "Secrets"];
-  for (const [idx, label] of labels.entries()) {
-    const col = idx % 2;
-    const row = Math.floor(idx / 2);
-    const x = MARGIN + col * (colW + BOX_GAP);
-    const y = topY - (row + 1) * rowH - row * BOX_GAP;
-    pdf.box(x, y, colW, rowH, label);
-    pdf.table(x + 8, y + 12, [86, 76, 54, colW - 232], 21, 8, ["Name", "Link", "Status", "Notes"]);
-  }
-}
+function drawDetailsPages(addPage: () => PdfElements, data: CharacterSheetData): void {
+  const sections = ([
+    ["Identity & Appearance", data.appearance],
+    ["Personality", data.traits],
+    ["Backstory & Notes", data.notes],
+  ] as Array<[string, SheetField[]]>).map(([title, fields]) => ({
+    title,
+    entries: fields
+      .filter((field) => field.value.trim())
+      .map((field) => ({ name: field.label, detail: field.value })),
+  })).filter((section) => section.entries.length > 0);
 
-function spellBox(pdf: PdfElements, x: number, y: number, w: number, h: number, title: string, data: CharacterSheetData, levels: number[]): void {
-  pdf.box(x, y, w, h, title);
-  const text = data.spellsByLevel
-    .filter((group) => levels.includes(group.level))
-    .flatMap((group) => group.spells.map((spell) => `${spell.name} - ${spell.detail || group.label}`))
-    .join("\n");
-  const spellLines = pdf.textBlock(x + 8, y + 10, w - 16, h - 34, text, 6.5, 11);
-  pdf.writingLines(x, y, w, h, WRITING_LINE_SPACING, writingTopPad(spellLines, 11));
+  drawTwoColumnSectionPages(
+    addPage,
+    "Character Details",
+    "Appearance, personality, backstory, and notes",
+    sections,
+  );
 }
 
 function labeledLine(pdf: PdfElements, x: number, y: number, w: number, label: string, value = ""): void {
@@ -1115,21 +1247,6 @@ function drawProficiencyCategories(
     pdf.line(x + 8, lineY, x + w - 8, lineY, 0.35, LIGHT);
     cursor = lineY - PROFICIENCY_SECTION_GAP;
   }
-}
-
-function drawDetailList(pdf: PdfElements, x: number, y: number, w: number, h: number, entries: NamedDetail[]): number {
-  const maxRows = Math.floor((h - 6) / DETAIL_ROW_H);
-  for (const [idx, entry] of entries.slice(0, maxRows).entries()) {
-    const yy = y + h - 6 - idx * DETAIL_ROW_H;
-    const name = entry.detail ? `${entry.name}:` : entry.name;
-    pdf.fillRect(x - 8, yy - 2, w + 16, 10);
-    pdf.fitText(x, yy, 132, name, 6.9, true);
-    if (entry.detail) pdf.fitText(x + 136, yy, w - 136, entry.detail, 6.6);
-  }
-  if (entries.length > maxRows) {
-    pdf.fitText(x, y + 2, w, `+${entries.length - maxRows} more`, 6.4, true, MID);
-  }
-  return Math.min(entries.length, maxRows);
 }
 
 function writingTopPad(textLines: number, lineHeight = 14): number {
@@ -1189,8 +1306,12 @@ function buildProficiencies(char: DdbCharacter): ProficiencyCategories {
   for (const list of Object.values(char.modifiers)) {
     if (!Array.isArray(list)) continue;
     for (const mod of list) {
-      if (mod.type !== "proficiency" || EXCLUDED_PROFICIENCY_SUBTYPES.has(mod.subType)) continue;
       const displayName = mod.friendlySubtypeName || titleCase(mod.subType.replace(/-/g, " "));
+      if (mod.type === "language") {
+        languages.add(displayName);
+        continue;
+      }
+      if (mod.type !== "proficiency" || EXCLUDED_PROFICIENCY_SUBTYPES.has(mod.subType)) continue;
       if (ARMOR_SUBTYPES.has(mod.subType)) armor.add(displayName);
       else if (WEAPON_GROUPS.has(mod.subType)) weapons.add(displayName);
       else if (LANGUAGE_SUBTYPES.has(mod.subType)) languages.add(displayName);
@@ -1246,7 +1367,7 @@ function defenseName(mod: DdbModifier): string {
 
 function saveAdvantageNames(mod: DdbModifier): string[] {
   if (!mod.type.toLowerCase().includes("advantage")) return [];
-  const text = `${mod.subType} ${mod.friendlySubtypeName}`.toLowerCase();
+  const text = `${mod.subType} ${mod.friendlySubtypeName} ${mod.restriction ?? ""}`.toLowerCase();
   const isSaveAdvantage = /\bsav(e|ing)\b/.test(text) || Object.keys(SAVE_ADVANTAGE_CONDITIONS).some((key) => text.includes(key));
   if (!isSaveAdvantage) return [];
 
@@ -1264,14 +1385,18 @@ function buildFeatures(char: DdbCharacter): NamedDetail[] {
   for (const cls of char.classes) {
     for (const feature of cls.classFeatures ?? []) {
       if (featureLevel(feature) <= cls.level && !seen.has(featureName(feature))) {
+        const detail = featureDetail(char, featureSnippet(feature), cls);
+        if (!detail) continue;
         seen.add(featureName(feature));
-        features.push({ name: featureName(feature), detail: shortDetail(featureSnippet(feature)) });
+        features.push({ name: featureName(feature), detail });
       }
     }
     for (const feature of cls.subclassDefinition?.classFeatures ?? []) {
       if (featureLevel(feature) <= cls.level && !seen.has(featureName(feature))) {
+        const detail = featureDetail(char, featureSnippet(feature), cls);
+        if (!detail) continue;
         seen.add(featureName(feature));
-        features.push({ name: featureName(feature), detail: shortDetail(featureSnippet(feature)) });
+        features.push({ name: featureName(feature), detail });
       }
     }
   }
@@ -1291,15 +1416,76 @@ function buildResources(char: DdbCharacter): string[] {
   return resources;
 }
 
+function buildInventory(char: DdbCharacter): InventoryEntry[] {
+  const containerNames = new Map(char.inventory.map((item) => [item.id, item.definition.name]));
+  return char.inventory.map((item) => {
+    const bundleSize = Math.max(1, item.definition.bundleSize ?? 1);
+    const weight = (item.definition.weight ?? 0) * item.quantity / bundleSize;
+    const containerName = item.containerEntityId && item.containerEntityId !== char.id
+      ? containerNames.get(item.containerEntityId)
+      : undefined;
+    const states = [
+      item.equipped ? "Equipped" : "",
+      item.isAttuned ? "Attuned" : "",
+      item.definition.isConsumable ? "Consumable" : "",
+    ].filter(Boolean);
+
+    return {
+      name: item.definition.name,
+      quantity: item.quantity,
+      weight,
+      value: item.definition.cost == null ? "" : `${item.definition.cost} gp`,
+      location: containerName ?? "Carried",
+      state: states.join(", "),
+    };
+  });
+}
+
+function buildCarrying(char: DdbCharacter, inventory: InventoryEntry[]): CharacterSheetData["carrying"] {
+  const strength = computeFinalAbilityScore(char.stats, char.bonusStats, char.overrideStats, char.modifiers, 1);
+  const coinWeight = char.preferences.ignoreCoinWeight === true
+    ? 0
+    : Object.values(char.currencies).reduce((total, amount) => total + (amount ?? 0), 0) / 50;
+  return {
+    weight: inventory.reduce((total, item) => total + item.weight, coinWeight),
+    capacity: strength * 15,
+    pushDrag: strength * 30,
+  };
+}
+
+function buildAppearance(char: DdbCharacter): SheetField[] {
+  const height = char.height == null ? "" : String(char.height).replace(/′/g, "'").replace(/″/g, "\"");
+  const identity = [
+    ALIGNMENTS[char.alignmentId] ? `Alignment: ${ALIGNMENTS[char.alignmentId]}` : "",
+    char.gender ? `Gender: ${titleCase(char.gender)}` : "",
+    char.age != null && char.age !== "" ? `Age: ${char.age}` : "",
+    char.race.size ? `Size: ${char.race.size}` : char.race.sizeId && CHARACTER_SIZES[char.race.sizeId]
+      ? `Size: ${CHARACTER_SIZES[char.race.sizeId]}`
+      : "",
+  ].filter(Boolean).join(" | ");
+  const appearance = [
+    height ? `Height: ${height}` : "",
+    char.weight != null && char.weight !== "" ? `Weight: ${char.weight} lb` : "",
+    char.eyes ? `Eyes: ${char.eyes}` : "",
+    char.skin ? `Skin: ${char.skin}` : "",
+    char.hair ? `Hair: ${char.hair}` : "",
+    char.faith ? `Faith: ${char.faith}` : "",
+  ].filter(Boolean).join(" | ");
+
+  return [
+    { label: "Identity", value: identity },
+    { label: "Appearance", value: appearance },
+  ].filter((field) => field.value);
+}
+
 function buildActionRows(
   char: DdbCharacter,
-  preparedSpells: DdbSpell[],
+  spells: DdbSpell[],
   spellcasting: CharacterSheetData["spellcasting"],
   proficiencyBonus: number,
 ): ActionRow[] {
-  const cantrips = preparedSpells
+  const cantrips = spells
     .filter((spell) => spell.definition.level === 0)
-    .slice(0, 2)
     .map((spell) => ({
       name: spell.definition.name,
       bonus: spellLooksLikeAttack(spell) ? spellcasting.attackBonus : "",
@@ -1307,7 +1493,10 @@ function buildActionRows(
       notes: spellLooksLikeAttack(spell)
         ? ""
         : spellcasting.saveDc ? `DC ${spellcasting.saveDc}` : "",
-    }));
+    }))
+    .filter((row) => row.damage)
+    .sort((a, b) => Number(Boolean(b.bonus)) - Number(Boolean(a.bonus)) || a.name.localeCompare(b.name))
+    .slice(0, 2);
 
   const weapons = char.inventory
     .filter((item) => item.equipped && isWeapon(item))
@@ -1551,7 +1740,11 @@ function computeSpellcasting(char: DdbCharacter, spells: DdbSpell[]): CharacterS
   };
 }
 
-function groupSpells(spells: DdbSpell[], characterLevel: number): CharacterSheetData["spellsByLevel"] {
+function groupSpells(
+  spells: DdbSpell[],
+  characterLevel: number,
+  spellcasting: CharacterSheetData["spellcasting"],
+): CharacterSheetData["spellsByLevel"] {
   const groups = new Map<number, SpellEntry[]>();
   for (const spell of spells) {
     const level = spell.definition.level;
@@ -1559,7 +1752,17 @@ function groupSpells(spells: DdbSpell[], characterLevel: number): CharacterSheet
     group.push({
       level,
       name: spell.definition.name,
-      detail: spellDetail(spell, characterLevel),
+      status: spell.prepared || spell.alwaysPrepared ? "P" : "K",
+      activation: spellActivation(spell),
+      range: spellRange(spell),
+      saveAttack: spellSaveAttack(spell, spellcasting),
+      components: spellComponents(spell),
+      duration: [spellDuration(spell), spell.definition.concentration ? "Conc." : "", spell.definition.ritual ? "Ritual" : ""]
+        .filter(Boolean)
+        .join(" / "),
+      detail: [spellDamage(spell, characterLevel), shortDetail(spell.definition.description, 115)]
+        .filter(Boolean)
+        .join(" - "),
     });
     groups.set(level, group);
   }
@@ -1572,16 +1775,6 @@ function groupSpells(spells: DdbSpell[], characterLevel: number): CharacterSheet
     }));
 }
 
-function getAllSpells(char: DdbCharacter): DdbSpell[] {
-  return [
-    ...(char.spells.class ?? []),
-    ...(char.spells.race ?? []),
-    ...(char.spells.background ?? []),
-    ...(char.spells.item ?? []),
-    ...(char.spells.feat ?? []),
-  ];
-}
-
 function getSpellcastingAbilityId(cls: DdbClass): number | null {
   return cls.definition.spellCastingAbilityId
     ?? cls.spellCastingAbilityId
@@ -1589,24 +1782,11 @@ function getSpellcastingAbilityId(cls: DdbClass): number | null {
     ?? null;
 }
 
-function spellDetail(spell: DdbSpell, characterLevel: number): string {
-  const level = spell.definition.level === 0 ? "Cantrip" : `Level ${spell.definition.level}`;
-  const components = (spell.definition.components ?? [])
+function spellComponents(spell: DdbSpell): string {
+  return (spell.definition.components ?? [])
     .map((component) => ({ 1: "V", 2: "S", 3: "M" })[component])
     .filter(Boolean)
     .join("/");
-  const notes = [
-    `${level} ${spell.definition.school}`,
-    spellActivation(spell),
-    spellShape(spell),
-    spellDamage(spell, characterLevel),
-    spellDuration(spell),
-    components,
-    spell.definition.concentration ? "Conc." : "",
-    spell.definition.ritual ? "Ritual" : "",
-    shortDetail(spell.definition.description, 70),
-  ].filter(Boolean);
-  return notes.join(" - ");
 }
 
 function spellActivation(spell: DdbSpell): string {
@@ -1616,12 +1796,10 @@ function spellActivation(spell: DdbSpell): string {
   return activation.activationTime === 1 ? label : `${activation.activationTime} ${label}`;
 }
 
-function spellShape(spell: DdbSpell): string {
-  return [
-    spellAttackType(spell),
-    spellSaveType(spell),
-    spellRange(spell),
-  ].filter(Boolean).join(" ");
+function spellSaveAttack(spell: DdbSpell, spellcasting: CharacterSheetData["spellcasting"]): string {
+  const save = spellSaveType(spell).replace(/ save$/i, "");
+  if (save) return `${save} ${spellcasting.saveDc}`.trim();
+  return spellAttackType(spell) ? spellcasting.attackBonus : "";
 }
 
 function spellAttackType(spell: DdbSpell): string {
@@ -1749,6 +1927,28 @@ function featureSnippet(feature: DdbClassFeature): string {
     ?? "";
 }
 
+function featureDetail(char: DdbCharacter, value: string | null | undefined, cls?: DdbClass): string {
+  const proficiencyBonus = calculateProficiencyBonus(computeLevel(char));
+  return stripHtml(value)
+    .replace(/\{\{classlevel\}\}/gi, String(cls?.level ?? computeLevel(char)))
+    .replace(/\{\{savedc:(str|dex|con|int|wis|cha)\}\}/gi, (_match, ability: string) => {
+      const id = ABILITY_NAMES.indexOf(ability.toUpperCase()) + 1;
+      return String(8 + proficiencyBonus + abilityMod(char, id));
+    })
+    .replace(/\{\{spellattack:(str|dex|con|int|wis|cha)\}\}/gi, (_match, ability: string) => {
+      const id = ABILITY_NAMES.indexOf(ability.toUpperCase()) + 1;
+      return signed(proficiencyBonus + abilityMod(char, id));
+    })
+    .replace(/\{\{modifier:(str|dex|con|int|wis|cha)(?:@min:(-?\d+))?(#unsigned)?\}\}/gi, (_match, ability: string, minimum?: string, unsigned?: string) => {
+      const id = ABILITY_NAMES.indexOf(ability.toUpperCase()) + 1;
+      const modifier = Math.max(abilityMod(char, id), minimum == null ? Number.NEGATIVE_INFINITY : Number(minimum));
+      return unsigned ? String(Math.abs(modifier)) : signed(modifier);
+    })
+    .replace(/\{\{[^}]+\}\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function shortDetail(value: string | null | undefined, max = 90): string {
   const text = stripHtml(value)
     .split(/\.\s+/)[0]
@@ -1766,6 +1966,12 @@ function passiveScore(data: CharacterSheetData, skillName: string): string {
 
 function signed(value: number): string {
   return value >= 0 ? `+${value}` : String(value);
+}
+
+function formatWeight(value: number): string {
+  if (value === 0) return "-";
+  const rounded = Math.round(value * 100) / 100;
+  return `${rounded} lb`;
 }
 
 function titleCase(value: string): string {

@@ -1,6 +1,6 @@
 # D&D Beyond Maps VTT — Research Notes
 
-Captured 2026-07-01 by inspecting `/games/3999469` in a browser session.
+Captured 2026-07-01 by inspecting `/games/<CAMPAIGN_ID>` in a browser session.
 The map was created and then deleted in the same session, so the user's
 campaign is back to its original empty state.
 
@@ -31,7 +31,7 @@ is identified by the `next-action` request header.
 ### Request shape
 
 ```
-POST /games/3999469
+POST /games/<CAMPAIGN_ID>
 next-action: 7fde567f3593525f04b136560aec48fdc011912a11
 accept: text/x-component
 content-type: text/plain;charset=UTF-8
@@ -66,9 +66,9 @@ the game state.
 | Action                                              | Args                                                                           |
 |-----------------------------------------------------|--------------------------------------------------------------------------------|
 | `40ba53e6c28b6c7dfd153d249f15da50ab7d5c97c5`         | Page load (no args in body)                                                     |
-| `70be8a5bf79ce7e9f33c3fca47aad1a3688b174bbe`         | `[true,"3999469",110164516]` — session/game init                                |
-| `7fde567f3593525f04b136560aec48fdc011912a11`         | `["3999469",<mapId>,<sourceObj>,"",<title>,<name>,false,"Web",false]` — add map |
-| `60db3fe092df9c8973650be2c9335673668a49d638`         | `["3999469",<scenarioId>]` — delete map                                         |
+| `70be8a5bf79ce7e9f33c3fca47aad1a3688b174bbe`         | `[true,"<CAMPAIGN_ID>",<USER_ID>]` — session/game init                                |
+| `7fde567f3593525f04b136560aec48fdc011912a11`         | `["<CAMPAIGN_ID>",<mapId>,<sourceObj>,"",<title>,<name>,false,"Web",false]` — add map |
+| `60db3fe092df9c8973650be2c9335673668a49d638`         | `["<CAMPAIGN_ID>",<scenarioId>]` — delete map                                         |
 
 These IDs are **not stable**. Treat them as scratch.
 
@@ -78,7 +78,7 @@ Args sent to add the "Mushroom Cave" basic map:
 
 | Index | Value                                                       | Meaning                             |
 |-------|-------------------------------------------------------------|-------------------------------------|
-| 0     | `"3999469"`                                                 | campaignId                          |
+| 0     | `"<CAMPAIGN_ID>"`                                           | campaignId                          |
 | 1     | `"fa31de26-ae3a-43fa-8efd-529f160805ba"`                     | map definition id                   |
 | 2     | `{"sourceId":"1","sourceName":"BR","chapterId":"1"}`        | source attribution                   |
 | 3     | `""`                                                        | (unknown, always empty in our run)  |
@@ -92,7 +92,7 @@ Args sent to add the "Mushroom Cave" basic map:
 
 ```json
 {
-  "PartitionKey": "game_3999469",
+  "PartitionKey": "game_<CAMPAIGN_ID>",
   "SortKey": "scenarios",
   "scenarios": [{
     "id": "d5f909c9-4b38-42a2-bdb2-7a0de30b6375",
@@ -180,11 +180,11 @@ For the MCP v1 scope:
 
 | File                                  | Notes                                            |
 |---------------------------------------|--------------------------------------------------|
-| `.tmp/maps-trace/init.req.network-request` | First POST body: `["3999469"]`               |
-| `.tmp/maps-trace/2.req.network-request` | Second POST body: `[true,"3999469",110164516]` |
-| `.tmp/maps-trace/add-map.req.network-request` | Add-map body: `["3999469","fa31de26-…",{…},"","Mushroom Cave","Mushroom Cave",false,"Web",false]` |
+| `.tmp/maps-trace/init.req.network-request` | First POST body: `["<CAMPAIGN_ID>"]`               |
+| `.tmp/maps-trace/2.req.network-request` | Second POST body: `[true,"<CAMPAIGN_ID>",<USER_ID>]` |
+| `.tmp/maps-trace/add-map.req.network-request` | Add-map body: `["<CAMPAIGN_ID>","fa31de26-…",{…},"","Mushroom Cave","Mushroom Cave",false,"Web",false]` |
 | `.tmp/maps-trace/add-map.resp.network-response` | Full RSC response with the new scenario |
-| `.tmp/maps-trace/delete-map.req.network-request` | Delete-map body: `["3999469","d5f909c9-…"]` |
+| `.tmp/maps-trace/delete-map.req.network-request` | Delete-map body: `["<CAMPAIGN_ID>","d5f909c9-…"]` |
 | `.tmp/maps-trace/main.snapshot.txt`    | Accessibility tree of the Map Browser modal       |
 | `.tmp/maps-trace/main-view.snapshot.txt` | Main VTT toolbar after adding the map            |
 | `.tmp/maps-trace/cleared.snapshot.txt` | Main VTT toolbar after deleting the map (empty)  |

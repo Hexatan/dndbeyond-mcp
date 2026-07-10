@@ -18,6 +18,10 @@ export interface DdbCharacter {
   lifestyleId: number;
   currencies: DdbCurrencies;
   spells: DdbSpellsContainer;
+  classSpells?: Array<{
+    characterClassId: number;
+    spells: DdbSpell[];
+  }>;
   inventory: DdbInventoryItem[];
   deathSaves: DdbDeathSaves;
   traits: DdbTraits;
@@ -43,6 +47,14 @@ export interface DdbCharacter {
   weightSpeeds?: DdbWeightSpeeds;
   speed?: DdbMovementSpeeds | number;
   speeds?: DdbMovementSpeeds;
+  gender?: string | null;
+  age?: number | string | null;
+  height?: number | string | null;
+  weight?: number | string | null;
+  eyes?: string | null;
+  hair?: string | null;
+  skin?: string | null;
+  faith?: string | null;
 }
 
 export interface DdbRace {
@@ -50,6 +62,8 @@ export interface DdbRace {
   baseRaceName: string;
   isHomebrew: boolean;
   racialTraits: DdbRacialTrait[];
+  size?: string | null;
+  sizeId?: number | null;
   weightSpeeds?: DdbWeightSpeeds;
   speed?: DdbMovementSpeeds | number;
 }
@@ -129,6 +143,7 @@ export interface DdbSpellsContainer {
 export interface DdbSpell {
   id: number;
   definition: {
+    id?: number;
     name: string;
     level: number;
     school: string;
@@ -157,6 +172,7 @@ export interface DdbSpell {
   };
   prepared: boolean;
   alwaysPrepared: boolean;
+  countsAsKnownSpell?: boolean;
   usesSpellSlot: boolean;
 }
 
@@ -164,6 +180,10 @@ export interface DdbInventoryItem {
   id: number;
   entityTypeId?: number;
   isProficient?: boolean;
+  isAttuned?: boolean;
+  containerEntityId?: number | null;
+  chargesUsed?: number | null;
+  limitedUse?: DdbLimitedUse | null;
   definition: {
     name: string;
     description: string;
@@ -175,6 +195,10 @@ export interface DdbInventoryItem {
     entityTypeId?: number;
     armorClass?: number | null;
     filterType?: string;
+    subType?: string | null;
+    bundleSize?: number | null;
+    isConsumable?: boolean;
+    canAttune?: boolean;
   };
   equipped: boolean;
   quantity: number;
@@ -217,6 +241,7 @@ export interface DdbModifier {
   value: number | null;
   friendlyTypeName: string;
   friendlySubtypeName: string;
+  restriction?: string | null;
   componentId: number;
   componentTypeId: number;
 }

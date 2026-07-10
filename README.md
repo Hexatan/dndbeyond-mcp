@@ -2,7 +2,7 @@
 
 A TypeScript MCP (Model Context Protocol) server for D&D Beyond. Gives Claude and other MCP-compatible AI assistants access to your characters, campaigns, encounters, spells, monsters, items, and character builder.
 
-> **This is a fork** of [AlexWorland/dndbeyond-mcp](https://github.com/AlexWorland/dndbeyond-mcp). It adds character creation, encounter management, PDF character sheets, downloadable compendium snapshots, edition-aware reference lookups, and live session checks. The current package version is **`0.5.0`**.
+> **This is a fork** of [AlexWorland/dndbeyond-mcp](https://github.com/AlexWorland/dndbeyond-mcp). It adds character creation, encounter management, PDF character sheets, downloadable compendium snapshots, edition-aware reference lookups, and live session checks. The current package version is **`0.5.1`**.
 
 > **Disclaimer:** This project uses unofficial, reverse-engineered D&D Beyond endpoints. It is not affiliated with, endorsed by, or supported by D&D Beyond or Wizards of the Coast. Endpoints may change without notice.
 
@@ -63,7 +63,7 @@ npm run compendium:download -- --fresh
 ### Character
 - `get_character` — Character by ID or name; `detail` can be `summary`, `sheet` (default), or `full`
 - `list_characters` — All owned characters, including characters outside campaigns
-- `generate_character_sheet_pdf` — Generate an eight-page PDF with light, color, or inverted themes
+- `generate_character_sheet_pdf` — Generate a data-driven, paginated PDF with light, color, or inverted themes
 - `get_definition` — Look up a character's spell, feat, class feature, racial trait, background feature, or equipped item by name
 
 ### Character Gameplay
@@ -149,6 +149,7 @@ D&D Beyond's unofficial write endpoints are inconsistent. HP, inspiration, condi
 
 ## Version History
 
+- **`v0.5.1`** — Corrects HP and spell-slot calculations, includes complete known and granted spell lists, and redesigns generated character sheets with paginated boxed sections, full spell and inventory tables, and handwriting space. Generated character PDFs and previews are no longer tracked.
 - **`v0.5.0`** — Adds the guided `character-creator` workflow; character preferences, source categories, and appearance controls; resumable compendium snapshots; encounter management; PDF character sheets; bearer authentication support; and expanded character/tool output.
 - **`v0.4.0`** — `check_auth` is now a **real session-liveness probe**: it performs a cobalt-token exchange against D&D Beyond rather than only checking whether a config file exists, so callers can detect an expired-but-present cookie.
 - **`v0.3.0`** — Edition-aware **monster search + lookup**: `search_monsters` / `get_monster` resolve the requested edition via D&D Beyond's `isLegacy` flag — preferring the selected edition, collapsing cross-edition duplicate names, and keeping/tagging other-edition-only results. Mirrors the existing `get_spell` edition handling.
