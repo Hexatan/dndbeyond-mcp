@@ -19,7 +19,7 @@ function createMockCharacter(): DdbCharacter {
   return {
     id: 12345,
     readonlyUrl: "https://www.dndbeyond.com/characters/12345",
-    name: "Neesk",
+    name: "Test Sorcerer",
     race: {
       fullName: "Changeling",
       baseRaceName: "Changeling",
@@ -133,6 +133,53 @@ function createMockCharacter(): DdbCharacter {
       item: [],
       feat: [],
     },
+    classSpells: [{
+      characterClassId: 1,
+      spells: [
+        {
+          id: 3,
+          definition: {
+            id: 3,
+            name: "Fire Bolt",
+            level: 0,
+            school: "Evocation",
+            description: "Make a ranged spell attack. The target takes 1d10 fire damage.",
+            range: { origin: "Ranged", rangeValue: 120, aoeType: null, aoeValue: null },
+            duration: { durationInterval: null, durationUnit: null, durationType: "Instantaneous" },
+            activation: { activationTime: 1, activationType: 1 },
+            components: [1, 2],
+            componentsDescription: null,
+            concentration: false,
+            ritual: false,
+          },
+          prepared: false,
+          alwaysPrepared: false,
+          countsAsKnownSpell: true,
+          usesSpellSlot: false,
+        },
+        {
+          id: 4,
+          definition: {
+            id: 4,
+            name: "Mage Armor",
+            level: 1,
+            school: "Abjuration",
+            description: "The target's base AC becomes 13 plus its Dexterity modifier.",
+            range: { origin: "Touch", rangeValue: null, aoeType: null, aoeValue: null },
+            duration: { durationInterval: 8, durationUnit: "Hour", durationType: "Time" },
+            activation: { activationTime: 1, activationType: 1 },
+            components: [1, 2, 3],
+            componentsDescription: null,
+            concentration: false,
+            ritual: false,
+          },
+          prepared: false,
+          alwaysPrepared: false,
+          countsAsKnownSpell: true,
+          usesSpellSlot: true,
+        },
+      ],
+    }],
     inventory: [
       {
         id: 1,
@@ -242,19 +289,20 @@ function createMockCharacter(): DdbCharacter {
         { id: "save-cha", type: "proficiency", subType: "charisma-saving-throws", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Charisma Saving Throws", componentId: 1, componentTypeId: 1 },
         { id: "arcana", type: "proficiency", subType: "arcana", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Arcana", componentId: 1, componentTypeId: 1 },
         { id: "psychic", type: "resistance", subType: "psychic", value: null, friendlyTypeName: "Resistance", friendlySubtypeName: "Psychic", componentId: 1, componentTypeId: 1 },
-        { id: "charm-fear", type: "advantage", subType: "saving-throws-against-charmed-and-frightened", value: null, friendlyTypeName: "Advantage", friendlySubtypeName: "Saving Throws Against Being Charmed and Frightened", componentId: 1, componentTypeId: 1 },
+        { id: "charm-fear", type: "advantage", subType: "saving-throws", value: null, friendlyTypeName: "Advantage", friendlySubtypeName: "Saving Throws", restriction: "against being charmed or frightened", componentId: 1, componentTypeId: 1 },
       ],
       race: [
         { id: "tool", type: "proficiency", subType: "disguise-kit", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Disguise Kit", componentId: 1, componentTypeId: 1 },
         { id: "dagger", type: "proficiency", subType: "dagger", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Dagger", componentId: 1, componentTypeId: 1 },
         { id: "crossbow-light", type: "proficiency", subType: "light-crossbows", value: null, friendlyTypeName: "Proficiency", friendlySubtypeName: "Light Crossbows", componentId: 1, componentTypeId: 1 },
+        { id: "common", type: "language", subType: "common", value: null, friendlyTypeName: "Language", friendlySubtypeName: "Common", componentId: 1, componentTypeId: 1 },
       ],
     },
     campaign: { id: 1, name: "Test Campaign" },
     feats: [],
     notes: {
       personalPossessions: "Maps and jewelry.",
-      backstory: "Neesk grew up with family stories.",
+      backstory: "The test sorcerer grew up with family stories.",
       otherNotes: null,
       allies: null,
       organizations: null,
@@ -274,10 +322,10 @@ describe("character sheet PDF", () => {
   it("extracts D&D Beyond data for a filled sheet", () => {
     const data = extractCharacterSheetData(createMockCharacter());
 
-    expect(data.name).toBe("Neesk");
+    expect(data.name).toBe("Test Sorcerer");
     expect(data.level).toBe(6);
     expect(data.proficiencyBonus).toBe(3);
-    expect(data.hp).toEqual({ current: 21, max: 26, temp: 3 });
+    expect(data.hp).toEqual({ current: 27, max: 32, temp: 3 });
     expect(data.ac).toBe(11);
     expect(data.abilities.find((ability) => ability.label === "CHA")?.value).toBe("18");
     expect(data.saves.find((save) => save.ability === "CON")).toMatchObject({ total: "+4", proficient: true });
@@ -291,30 +339,60 @@ describe("character sheet PDF", () => {
     expect(data.proficiencies).toMatchObject({
       weapons: ["Dagger", "Light Crossbows"],
       tools: ["Disguise Kit"],
+      languages: ["Common"],
     });
     expect(data.defenses).toEqual([
       { label: "Resistances", value: "Psychic" },
       { label: "Save Advantages", value: "Charmed, Frightened" },
     ]);
+    expect(data.resources).toEqual(["Sorcery Points: 4/6"]);
     expect(data.actionRows).toEqual([
+      { name: "Fire Bolt", bonus: "+7", damage: "2d10 fire", notes: "" },
       { name: "Mind Sliver", bonus: "", damage: "2d6 psychic", notes: "DC 15" },
       { name: "Quarterstaff", bonus: "+1", damage: "1d6-2 bludgeoning", notes: "" },
       { name: "Dagger", bonus: "+4", damage: "1d4+1 piercing", notes: "Prof." },
       { name: "Crossbow, Light", bonus: "+4", damage: "1d8+1 piercing", notes: "Prof." },
     ]);
-    expect(data.spellsByLevel).toEqual([
-      { level: 0, label: "Cantrips", spells: [{ level: 0, name: "Mind Sliver", detail: "Cantrip Enchantment - Action - Ranged 60 ft - 2d6 psychic - 1 Round - V - The target takes 1d6 psychic damage." }] },
-      { level: 3, label: "Level 3", spells: [{ level: 3, name: "Sending", detail: "Level 3 Evocation - V/S/M" }] },
+    expect(data.spellsByLevel.flatMap((group) => group.spells.map((spell) => spell.name))).toEqual([
+      "Fire Bolt",
+      "Mind Sliver",
+      "Mage Armor",
+      "Sending",
     ]);
+    expect(data.spellsByLevel.flatMap((group) => group.spells)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Mage Armor", status: "K" }),
+      expect.objectContaining({ name: "Sending", status: "P" }),
+    ]));
+    expect(data.inventory).toHaveLength(3);
   });
 
-  it("renders a valid 8-page PDF", async () => {
+  it("renders a valid data-backed PDF", async () => {
     const data = extractCharacterSheetData(createMockCharacter());
     const pdfBytes = await renderCharacterSheetPdf(data, "light");
 
     expect(Buffer.from(pdfBytes.subarray(0, 4)).toString("ascii")).toBe("%PDF");
     const pdf = await PDFDocument.load(pdfBytes);
-    expect(pdf.getPageCount()).toBe(8);
+    expect(pdf.getPageCount()).toBe(5);
+  });
+
+  it("adds continuation pages instead of dropping overflowing data", async () => {
+    const data = extractCharacterSheetData(createMockCharacter());
+    const spell = data.spellsByLevel[0].spells[0];
+    const item = data.inventory[0];
+    data.features = Array.from({ length: 50 }, (_, index) => ({
+      name: `Feature ${index + 1}`,
+      detail: "A complete feature description that must flow onto continuation pages without being hidden.",
+    }));
+    data.spellsByLevel = [{
+      level: 1,
+      label: "Level 1",
+      spells: Array.from({ length: 40 }, (_, index) => ({ ...spell, level: 1, name: `Spell ${index + 1}` })),
+    }];
+    data.inventory = Array.from({ length: 40 }, (_, index) => ({ ...item, name: `Item ${index + 1}` }));
+
+    const pdf = await PDFDocument.load(await renderCharacterSheetPdf(data, "light"));
+
+    expect(pdf.getPageCount()).toBeGreaterThan(5);
   });
 
   it("returns an embedded PDF resource from the MCP tool", async () => {
@@ -333,8 +411,8 @@ describe("character sheet PDF", () => {
     expect(Buffer.from(resource.resource.blob, "base64").subarray(0, 4).toString("ascii")).toBe("%PDF");
     expect(result.structuredContent).toMatchObject({
       characterId: 12345,
-      characterName: "Neesk",
-      pageCount: 8,
+      characterName: "Test Sorcerer",
+      pageCount: 5,
       theme: "color",
       mimeType: "application/pdf",
     });

@@ -466,6 +466,21 @@ describe("computeLevel", () => {
 });
 
 describe("calculateMaxHp", () => {
+  it("adds the Constitution modifier for every character level", () => {
+    const char = {
+      baseHitPoints: 26,
+      bonusHitPoints: null,
+      overrideHitPoints: null,
+      classes: [{ level: 6 }],
+      stats: [{ id: 3, value: 12 }],
+      bonusStats: [],
+      overrideStats: [],
+      modifiers: {},
+    } as unknown as DdbCharacter;
+
+    expect(calculateMaxHp(char)).toBe(32);
+  });
+
   it("should return base + bonus when no override", () => {
     const char = {
       baseHitPoints: 42,

@@ -24,7 +24,7 @@ function createTestServer(): { server: McpServer; client: DdbClient } {
 
   const server = new McpServer({
     name: "dndbeyond-mcp",
-    version: "0.1.0",
+    version: "0.5.1",
   });
 
   // Register all prompts

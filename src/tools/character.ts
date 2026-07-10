@@ -16,6 +16,7 @@ import type {
 import { fuzzyMatch } from "../utils/fuzzy-match.js";
 import { ABILITY_NAMES, calculateAbilityModifier, sumModifierBonuses, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc, calculateSpellSlots } from "../utils/character-calculations.js";
 import { findAccessibleCharacterByName, formatListedCharacter, getCampaignCharacterRefs, getOwnedCharacterList } from "../utils/character-list.js";
+import { getCharacterSpells } from "../utils/character-spells.js";
 import { stripHtml } from "../utils/html.js";
 
 interface GetCharacterParams {
@@ -59,26 +60,25 @@ function formatHp(char: DdbCharacter): string {
 }
 
 function formatSpells(char: DdbCharacter): string {
-  const allSpells = getAllSpells(char);
+  const allSpells = getCharacterSpells(char);
 
   if (allSpells.length === 0) return "";
 
-  const prepared = allSpells.filter((s) => s.prepared || s.alwaysPrepared);
-  const preparedByLevel = prepared.reduce((acc, spell) => {
+  const spellsByLevel = allSpells.reduce((acc, spell) => {
     const level = spell.definition.level;
     if (!acc[level]) acc[level] = [];
     acc[level].push(spell.definition.name);
     return acc;
   }, {} as Record<number, string[]>);
 
-  const lines = Object.entries(preparedByLevel)
+  const lines = Object.entries(spellsByLevel)
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([level, spells]) => {
       const levelLabel = level === "0" ? "Cantrips" : `Level ${level}`;
       return `  ${levelLabel}: ${spells.join(", ")}`;
     });
 
-  return `\nPrepared Spells:\n${lines.join("\n")}`;
+  return `\nSpells:\n${lines.join("\n")}`;
 }
 
 function formatInventory(char: DdbCharacter): string {
@@ -96,16 +96,6 @@ function formatInventory(char: DdbCharacter): string {
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-
-function getAllSpells(char: DdbCharacter): DdbSpell[] {
-  return [
-    ...(char.spells.class ?? []),
-    ...(char.spells.race ?? []),
-    ...(char.spells.background ?? []),
-    ...(char.spells.item ?? []),
-    ...(char.spells.feat ?? []),
-  ];
-}
 
 async function resolveCharacterId(
   client: DdbClient,
@@ -299,7 +289,7 @@ function formatProficiencies(char: DdbCharacter): string {
 }
 
 function formatSpellcasting(char: DdbCharacter): string {
-  const allSpells = getAllSpells(char);
+  const allSpells = getCharacterSpells(char);
 
   if (allSpells.length === 0) return "";
 
@@ -740,7 +730,7 @@ function searchDefinitions(char: DdbCharacter, query: string): DefinitionResult[
   const q = query.toLowerCase();
 
   // Search spells
-  const allSpells = getAllSpells(char);
+  const allSpells = getCharacterSpells(char);
   for (const spell of allSpells) {
     if (spell.definition.name.toLowerCase().includes(q)) {
       results.push({
@@ -849,10 +839,9 @@ function formatCharacterFull(char: DdbCharacter): string {
   const definitionSections: string[] = [];
 
   // Spells
-  const allSpells = getAllSpells(char);
-  const preparedSpells = allSpells.filter((s) => s.prepared || s.alwaysPrepared);
-  if (preparedSpells.length > 0) {
-    const spellDefs = preparedSpells
+  const characterSpells = getCharacterSpells(char);
+  if (characterSpells.length > 0) {
+    const spellDefs = characterSpells
       .sort((a, b) => a.definition.level - b.definition.level || a.definition.name.localeCompare(b.definition.name))
       .map((s) => formatSpellDefinition(s));
     definitionSections.push(`\n=== Spell Definitions ===\n\n${spellDefs.join("\n\n---\n\n")}`);
@@ -1575,7 +1564,7 @@ export async function castSpell(
     );
 
     // Find the spell in character's spell lists
-    const allSpells = getAllSpells(character);
+    const allSpells = getCharacterSpells(character);
     const spellNameLower = params.spellName.toLowerCase();
     const spell = allSpells.find(
       (s) => s.definition.name.toLowerCase() === spellNameLower

@@ -127,10 +127,19 @@ export function calculateSpellSlots(
 }
 
 export function calculateMaxHp(char: DdbCharacter): number {
-  const base = char.baseHitPoints;
-  const bonus = char.bonusHitPoints ?? 0;
-  const override = char.overrideHitPoints;
-  return override ?? (base + bonus);
+  if (char.overrideHitPoints != null) return char.overrideHitPoints;
+
+  const hasAbilityData = Array.isArray(char.stats)
+    && Array.isArray(char.bonusStats)
+    && Array.isArray(char.overrideStats)
+    && char.modifiers;
+  const constitution = hasAbilityData
+    ? computeFinalAbilityScore(char.stats, char.bonusStats, char.overrideStats, char.modifiers, 3)
+    : 10;
+  const level = Array.isArray(char.classes) ? computeLevel(char) : 0;
+  const constitutionHitPoints = Math.floor((constitution - 10) / 2) * level;
+
+  return char.baseHitPoints + (char.bonusHitPoints ?? 0) + constitutionHitPoints;
 }
 
 export function calculateCurrentHp(char: DdbCharacter): number {

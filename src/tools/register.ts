@@ -163,7 +163,7 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
 
   server.tool(
     "generate_character_sheet_pdf",
-    "Generate an 8-page reMarkable-friendly PDF character sheet from a D&D Beyond character. Returns an embedded application/pdf resource with base64 PDF bytes.",
+    "Generate a data-driven reMarkable-friendly PDF character sheet from a D&D Beyond character. Returns an embedded application/pdf resource with base64 PDF bytes.",
     {
       characterId: z.coerce.number().optional().describe("The character ID"),
       characterName: z

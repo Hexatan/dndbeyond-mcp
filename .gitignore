@@ -40,3 +40,7 @@ coverage/
 # npm
 *.tgz
 docs/
+
+# Generated character sheets and PDF previews
+output/
+tmp/pdfs/

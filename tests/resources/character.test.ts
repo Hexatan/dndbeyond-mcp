@@ -121,9 +121,9 @@ const mockCharacterListResponse: DdbCharacterListResponse = {
   canUnlockCharacters: false,
   characters: [
     {
-      id: 76821074,
+      id: 54321,
       level: 6,
-      name: "Neesk",
+      name: "Standalone Hero",
       status: 1,
       statusSlug: "active",
       isAssigned: true,
@@ -227,7 +227,7 @@ describe("Character Resources", () => {
 
   it("should include owned characters without campaigns in characters list", async () => {
     const mockClient = createMockClient();
-    vi.mocked(getUserId).mockResolvedValue(110164516);
+    vi.mocked(getUserId).mockResolvedValue(98765);
     vi.mocked(mockClient.get).mockResolvedValueOnce(mockCharacterListResponse);
 
     const { mockServer, handlers } = createMockServer();
@@ -236,7 +236,7 @@ describe("Character Resources", () => {
     const result = await handlers["D&D Beyond Characters"]();
 
     expect(result.contents).toHaveLength(1);
-    expect(result.contents[0].text).toContain("ID: 76821074 | Neesk - Changeling Sorcerer/Aberrant Mind (Level 6) - No campaign");
+    expect(result.contents[0].text).toContain("ID: 54321 | Standalone Hero - Changeling Sorcerer/Aberrant Mind (Level 6) - No campaign");
     expect(mockClient.get).toHaveBeenCalledTimes(1);
   });
 

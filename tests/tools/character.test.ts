@@ -236,9 +236,9 @@ const mockCharacterListResponse: DdbCharacterListResponse = {
       isReady: false,
     },
     {
-      id: 76821074,
+      id: 54321,
       level: 6,
-      name: "Neesk",
+      name: "Standalone Hero",
       status: 1,
       statusSlug: "active",
       isAssigned: true,
@@ -277,7 +277,7 @@ describe("getCharacter", () => {
     expect(text).toContain("Race: Mountain Dwarf");
     expect(text).toContain("Class: Fighter (Battle Master) 5");
     expect(text).toContain("Level: 5");
-    expect(text).toContain("HP: 32/42 (+5 temp)");
+    expect(text).toContain("HP: 42/52 (+5 temp)");
     expect(text).toContain("Campaign: Lost Mines of Phandelver");
     expect(text).toContain("Equipped Items:");
     expect(text).toContain("Longsword");
@@ -320,23 +320,23 @@ describe("getCharacter", () => {
 
   it("should find owned characters that are not in campaigns by name", async () => {
     const client = createMockClient();
-    const neesk = {
+    const standaloneCharacter = {
       ...mockCharacter,
-      id: 76821074,
-      name: "Neesk",
+      id: 54321,
+      name: "Standalone Hero",
       race: { ...mockCharacter.race, fullName: "Changeling" },
       campaign: null,
     };
-    vi.mocked(getUserId).mockResolvedValue(110164516);
+    vi.mocked(getUserId).mockResolvedValue(98765);
     vi.mocked(client.get)
       .mockResolvedValueOnce(mockCharacterListResponse)
-      .mockResolvedValueOnce(neesk);
+      .mockResolvedValueOnce(standaloneCharacter);
 
-    const result = await getCharacter(client, { characterName: "Neesk", detail: "summary" });
+    const result = await getCharacter(client, { characterName: "Standalone Hero", detail: "summary" });
 
-    expect(result.content[0].text).toContain("Name: Neesk");
+    expect(result.content[0].text).toContain("Name: Standalone Hero");
     expect(result.content[0].text).toContain("Race: Changeling");
-    expect(vi.mocked(client.get).mock.calls[0][0]).toContain("characters/list?userId=110164516");
+    expect(vi.mocked(client.get).mock.calls[0][0]).toContain("characters/list?userId=98765");
   });
 });
 
@@ -479,7 +479,7 @@ describe("getCharacter with detail levels", () => {
 describe("listCharacters", () => {
   it("should list owned characters including characters without campaigns", async () => {
     const client = createMockClient();
-    vi.mocked(getUserId).mockResolvedValue(110164516);
+    vi.mocked(getUserId).mockResolvedValue(98765);
     vi.mocked(client.get).mockResolvedValueOnce(mockCharacterListResponse);
 
     const result = await listCharacters(client);
@@ -487,7 +487,7 @@ describe("listCharacters", () => {
     expect(result.content).toHaveLength(1);
     const text = result.content[0].text;
     expect(text).toContain("ID: 12345 | Thorin Ironforge - Mountain Dwarf Fighter/Battle Master (Level 5) - Lost Mines of Phandelver");
-    expect(text).toContain("ID: 76821074 | Neesk - Changeling Sorcerer/Aberrant Mind (Level 6) - No campaign");
+    expect(text).toContain("ID: 54321 | Standalone Hero - Changeling Sorcerer/Aberrant Mind (Level 6) - No campaign");
     expect(client.get).toHaveBeenCalledTimes(1);
   });
 

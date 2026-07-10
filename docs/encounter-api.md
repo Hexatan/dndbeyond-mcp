@@ -1,8 +1,8 @@
 # D&D Beyond Encounter Service API
 
-Captured via Chrome DevTools network inspection on **2026-07-01** using the
-`"A beastly wake-up call"` encounter (id `11e1c9d4-a0bc-42da-aaf0-5c510ce834c6`)
-in the "One-shot" campaign (id `3999469`).
+Captured via Chrome DevTools network inspection on **2026-07-01** using an
+example encounter (id `<ENCOUNTER_ID>`) in an example campaign (id
+`<CAMPAIGN_ID>`).
 
 All encounter traffic is served by **`encounter-service.dndbeyond.com`** with a
 cobalt Bearer token (same auth as the character service). The envelope is
@@ -143,15 +143,15 @@ content). Fields observed in the captured responses:
 
 ```json
 {
-  "id": "98962156",
+  "id": "<CHARACTER_ID>",
   "count": 1,
   "level": 5,
   "type": "CHARACTER_TYPE_DDB",
   "hidden": false,
   "race": "Human",
   "gender": null,
-  "name": "Marin Singlebraid",
-  "userName": "Hexatan",
+  "name": "Example Hero",
+  "userName": "example-user",
   "isReady": true,
   "avatarUrl": null,
   "classByLine": "Fighter / Champion",
