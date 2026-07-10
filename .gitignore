@@ -28,6 +28,7 @@ setup/explored-*.json
 # OS
 .DS_Store
 Thumbs.db
+.tmp/
 
 # Environment
 .env
@@ -38,3 +39,4 @@ coverage/
 
 # npm
 *.tgz
+docs/

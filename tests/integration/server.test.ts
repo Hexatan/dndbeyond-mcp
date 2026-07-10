@@ -103,6 +103,9 @@ describe("MCP Server Integration", () => {
     expect(toolNames).toContain("list_characters");
     expect(toolNames).toContain("get_character");
     expect(toolNames).toContain("update_hp");
+    expect(toolNames).toContain("set_character_preferences");
+    expect(toolNames).toContain("set_character_source_categories");
+    expect(toolNames).toContain("set_character_appearance");
   });
 
   it("should list all registered resources", async () => {
@@ -122,6 +125,7 @@ describe("MCP Server Integration", () => {
 
     const promptNames = response.prompts.map((p) => p.name);
     expect(promptNames).toContain("character-summary");
+    expect(promptNames).toContain("character-creator");
     expect(promptNames).toContain("session-prep");
     expect(promptNames).toContain("encounter-builder");
     expect(promptNames).toContain("spell-advisor");
@@ -248,5 +252,19 @@ describe("MCP Server Integration", () => {
 
     const messageText = (response.messages[0].content as { text: string }).text;
     expect(messageText).toContain("TestCharacter");
+  });
+
+  it("should get the character creator prompt with an optional concept", async () => {
+    const response = await client.getPrompt({
+      name: "character-creator",
+      arguments: {
+        concept: "a dwarven cleric who protects miners",
+      },
+    });
+
+    const messageText = (response.messages[0].content as { text: string }).text;
+    expect(messageText).toContain("dwarven cleric");
+    expect(messageText).toContain("create_character");
+    expect(messageText).toContain("explicit confirmation");
   });
 });
