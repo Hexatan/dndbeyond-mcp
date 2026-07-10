@@ -31,7 +31,16 @@ function createMockCharacter(): DdbCharacter {
     classes: [
       {
         id: 1,
-        definition: { id: 6, name: "Sorcerer" },
+        definition: {
+          id: 6,
+          name: "Sorcerer",
+          canCastSpells: true,
+          spellRules: {
+            multiClassSpellSlotDivisor: 1,
+            multiClassSpellSlotRounding: 1,
+            levelSpellSlots: [[], [], [], [], [], [], [4, 3, 3]],
+          },
+        },
         subclassDefinition: {
           name: "Aberrant Mind",
           classFeatures: [
@@ -252,8 +261,9 @@ function createMockCharacter(): DdbCharacter {
     },
     pactMagic: null,
     spellSlots: [
-      { level: 1, used: 0, available: 4 },
-      { level: 3, used: 1, available: 3 },
+      { level: 1, used: 0, available: 0 },
+      { level: 2, used: 0, available: 0 },
+      { level: 3, used: 1, available: 0 },
     ],
     hitDiceUsed: 1,
     speed: 30,
@@ -273,6 +283,11 @@ describe("character sheet PDF", () => {
     expect(data.saves.find((save) => save.ability === "CON")).toMatchObject({ total: "+4", proficient: true });
     expect(data.skills.find((skill) => skill.name === "Arcana")).toMatchObject({ total: "+5", proficient: true });
     expect(data.spellcasting).toEqual({ ability: "CHA", saveDc: "15", attackBonus: "+7" });
+    expect(data.spellSlots).toEqual([
+      { level: 1, used: 0, available: 4 },
+      { level: 2, used: 0, available: 3 },
+      { level: 3, used: 1, available: 3 },
+    ]);
     expect(data.proficiencies).toMatchObject({
       weapons: ["Dagger", "Light Crossbows"],
       tools: ["Disguise Kit"],

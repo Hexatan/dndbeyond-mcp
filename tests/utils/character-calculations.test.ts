@@ -6,6 +6,7 @@ import {
   computeLevel,
   calculateMaxHp,
   calculateCurrentHp,
+  calculateSpellSlots,
 } from "../../src/utils/character-calculations.js";
 import type { DdbCharacter, DdbModifier } from "../../src/types/character.js";
 
@@ -132,6 +133,78 @@ describe("sumModifierBonuses", () => {
 
     const result = sumModifierBonuses(modifiers, "armor-class");
     expect(result).toBe(0);
+  });
+});
+
+describe("calculateSpellSlots", () => {
+  it("derives capacities from the class table when D&D Beyond returns zero available", () => {
+    const character = {
+      spellSlots: [
+        { level: 1, used: 0, available: 0 },
+        { level: 2, used: 1, available: 0 },
+        { level: 3, used: 0, available: 0 },
+      ],
+      classes: [{
+        definition: {
+          name: "Sorcerer",
+          canCastSpells: true,
+          spellRules: {
+            multiClassSpellSlotDivisor: 1,
+            multiClassSpellSlotRounding: 1,
+            levelSpellSlots: [[], [], [], [], [], [], [4, 3, 3]],
+          },
+        },
+        subclassDefinition: { name: "Aberrant Mind", canCastSpells: false },
+        level: 6,
+      }],
+    } as unknown as DdbCharacter;
+
+    expect(calculateSpellSlots(character)).toEqual([
+      { level: 1, used: 0, available: 4 },
+      { level: 2, used: 1, available: 3 },
+      { level: 3, used: 0, available: 3 },
+    ]);
+  });
+
+  it("combines multiclass caster levels using D&D Beyond rounding metadata", () => {
+    const character = {
+      spellSlots: [],
+      classes: [
+        {
+          definition: {
+            name: "Bard",
+            canCastSpells: true,
+            spellRules: {
+              multiClassSpellSlotDivisor: 1,
+              multiClassSpellSlotRounding: 1,
+              levelSpellSlots: [],
+            },
+          },
+          subclassDefinition: null,
+          level: 6,
+        },
+        {
+          definition: {
+            name: "Artificer",
+            canCastSpells: true,
+            spellRules: {
+              multiClassSpellSlotDivisor: 2,
+              multiClassSpellSlotRounding: 2,
+              levelSpellSlots: [],
+            },
+          },
+          subclassDefinition: null,
+          level: 1,
+        },
+      ],
+    } as unknown as DdbCharacter;
+
+    expect(calculateSpellSlots(character)).toEqual([
+      { level: 1, used: 0, available: 4 },
+      { level: 2, used: 0, available: 3 },
+      { level: 3, used: 0, available: 3 },
+      { level: 4, used: 0, available: 1 },
+    ]);
   });
 });
 

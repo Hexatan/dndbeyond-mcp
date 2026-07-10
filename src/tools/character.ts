@@ -14,7 +14,7 @@ import type {
   DdbMovementSpeeds,
 } from "../types/character.js";
 import { fuzzyMatch } from "../utils/fuzzy-match.js";
-import { ABILITY_NAMES, calculateAbilityModifier, sumModifierBonuses, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc } from "../utils/character-calculations.js";
+import { ABILITY_NAMES, calculateAbilityModifier, sumModifierBonuses, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc, calculateSpellSlots } from "../utils/character-calculations.js";
 import { findAccessibleCharacterByName, formatListedCharacter, getCampaignCharacterRefs, getOwnedCharacterList } from "../utils/character-list.js";
 import { stripHtml } from "../utils/html.js";
 
@@ -475,12 +475,12 @@ function formatSpeedPart(label: string, value: number | null | undefined): strin
 }
 
 function formatSpellSlots(char: DdbCharacter): string {
-  if (!char.spellSlots || char.spellSlots.length === 0) {
+  const spellSlots = calculateSpellSlots(char);
+  if (spellSlots.length === 0) {
     return "";
   }
 
-  const lines = char.spellSlots
-    .filter(slot => slot.available > 0)
+  const lines = spellSlots
     .map(slot => {
       const filled = "\u25CF".repeat(slot.available - slot.used);
       const empty = "\u25CB".repeat(slot.used);
@@ -1633,7 +1633,7 @@ export async function castSpell(
     }
 
     // Use regular spell slot
-    const slotData = character.spellSlots?.find(s => s.level === spellLevel);
+    const slotData = calculateSpellSlots(character).find(s => s.level === spellLevel);
     if (slotData) {
       const newUsed = slotData.used + 1;
       if (newUsed > slotData.available) {

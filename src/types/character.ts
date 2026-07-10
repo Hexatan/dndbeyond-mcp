@@ -56,12 +56,28 @@ export interface DdbRace {
 
 export interface DdbClass {
   id: number;
-  definition: { id: number; name: string; spellCastingAbilityId?: number | null };
+  definition: {
+    id: number;
+    name: string;
+    spellCastingAbilityId?: number | null;
+    canCastSpells?: boolean;
+    spellRules?: DdbSpellRules | null;
+  };
   spellCastingAbilityId?: number | null;
-  subclassDefinition: { name: string; classFeatures: DdbClassFeature[] } | null;
+  subclassDefinition: {
+    name: string;
+    classFeatures: DdbClassFeature[];
+    canCastSpells?: boolean;
+  } | null;
   level: number;
   isStartingClass: boolean;
   classFeatures: DdbClassFeature[];
+}
+
+export interface DdbSpellRules {
+  multiClassSpellSlotDivisor: number;
+  multiClassSpellSlotRounding: number;
+  levelSpellSlots: number[][];
 }
 
 export interface DdbMovementSpeeds {
