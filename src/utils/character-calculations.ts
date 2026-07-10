@@ -62,6 +62,70 @@ export function computeLevel(char: DdbCharacter): number {
   return char.classes.reduce((sum, cls) => sum + cls.level, 0);
 }
 
+const MULTICLASS_SPELL_SLOTS = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [2, 0, 0, 0, 0, 0, 0, 0, 0],
+  [3, 0, 0, 0, 0, 0, 0, 0, 0],
+  [4, 2, 0, 0, 0, 0, 0, 0, 0],
+  [4, 3, 0, 0, 0, 0, 0, 0, 0],
+  [4, 3, 2, 0, 0, 0, 0, 0, 0],
+  [4, 3, 3, 0, 0, 0, 0, 0, 0],
+  [4, 3, 3, 1, 0, 0, 0, 0, 0],
+  [4, 3, 3, 2, 0, 0, 0, 0, 0],
+  [4, 3, 3, 3, 1, 0, 0, 0, 0],
+  [4, 3, 3, 3, 2, 0, 0, 0, 0],
+  [4, 3, 3, 3, 2, 1, 0, 0, 0],
+  [4, 3, 3, 3, 2, 1, 0, 0, 0],
+  [4, 3, 3, 3, 2, 1, 1, 0, 0],
+  [4, 3, 3, 3, 2, 1, 1, 0, 0],
+  [4, 3, 3, 3, 2, 1, 1, 1, 0],
+  [4, 3, 3, 3, 2, 1, 1, 1, 0],
+  [4, 3, 3, 3, 2, 1, 1, 1, 1],
+  [4, 3, 3, 3, 3, 1, 1, 1, 1],
+  [4, 3, 3, 3, 3, 2, 1, 1, 1],
+  [4, 3, 3, 3, 3, 2, 2, 1, 1],
+] as const;
+
+export function calculateSpellSlots(
+  char: DdbCharacter,
+): NonNullable<DdbCharacter["spellSlots"]> {
+  const storedSlots = char.spellSlots ?? [];
+  if (storedSlots.some((slot) => slot.available > 0)) {
+    return storedSlots.filter((slot) => slot.available > 0);
+  }
+
+  const spellcastingClasses = char.classes.filter((cls) =>
+    cls.definition.name !== "Warlock"
+    && (cls.definition.canCastSpells || cls.subclassDefinition?.canCastSpells)
+  );
+  if (spellcastingClasses.length === 0) return [];
+
+  let capacities: readonly number[] | undefined;
+  if (spellcastingClasses.length === 1) {
+    const cls = spellcastingClasses[0];
+    capacities = cls.definition.spellRules?.levelSpellSlots[cls.level];
+  } else {
+    const casterLevel = spellcastingClasses.reduce((total, cls) => {
+      const rules = cls.definition.spellRules;
+      if (!rules) return total;
+      const dividedLevel = cls.level / rules.multiClassSpellSlotDivisor;
+      return total + (rules.multiClassSpellSlotRounding === 2
+        ? Math.ceil(dividedLevel)
+        : Math.floor(dividedLevel));
+    }, 0);
+    capacities = MULTICLASS_SPELL_SLOTS[Math.min(casterLevel, 20)];
+  }
+
+  if (!capacities) return [];
+  return capacities.flatMap((available, index) => available > 0
+    ? [{
+      level: index + 1,
+      used: storedSlots.find((slot) => slot.level === index + 1)?.used ?? 0,
+      available,
+    }]
+    : []);
+}
+
 export function calculateMaxHp(char: DdbCharacter): number {
   const base = char.baseHitPoints;
   const bonus = char.bonusHitPoints ?? 0;
