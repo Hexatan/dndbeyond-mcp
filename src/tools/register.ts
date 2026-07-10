@@ -32,9 +32,12 @@ import {
   updateCharacterName,
   setClassLevel,
   setAbilityScoreType,
+  setCharacterPreferences,
+  setCharacterSourceCategories,
   setStartingEquipmentType,
   addInventoryItems,
   setGold,
+  setCharacterAppearance,
   updateDescription,
 } from "./character.js";
 import { generateCharacterSheetPdf } from "./character-sheet-pdf.js";
@@ -62,6 +65,55 @@ import {
   searchClassFeatures,
   searchRacialTraits,
 } from "./reference.js";
+
+const CHARACTER_PREFERENCE_FIELDS = {
+  useHomebrewContent: z.boolean().optional().describe("Enable homebrew content"),
+  progressionType: z.coerce.number().optional().describe("1 = Milestone, 2 = XP"),
+  encumbranceType: z.coerce.number().optional().describe("1 = Encumbrance, 2 = Off, 3 = Variant"),
+  ignoreCoinWeight: z.boolean().optional().describe("Ignore coin weight for encumbrance"),
+  hitPointType: z.coerce.number().optional().describe("1 = Fixed, 2 = Manual"),
+  showUnarmedStrike: z.boolean().optional().describe("Show unarmed strike on the sheet"),
+  showScaledSpells: z.boolean().optional().describe("Show scaled spell damage"),
+  primarySense: z.coerce.number().optional().describe("Primary sense display ID"),
+  primaryMovement: z.coerce.number().optional().describe("Primary movement display ID"),
+  privacyType: z.coerce.number().optional().describe("1 = Public, 2 = Private, 3 = Campaign Only"),
+  sharingType: z.coerce.number().optional().describe("Sharing type"),
+  abilityScoreDisplayType: z.coerce.number().optional().describe("1 = Modifiers Top, 2 = Scores Top"),
+  enforceFeatRules: z.boolean().optional().describe("Require feat prerequisites"),
+  enforceMulticlassRules: z.boolean().optional().describe("Require multiclass prerequisites"),
+  enableOptionalClassFeatures: z.boolean().optional().describe("Enable optional class features"),
+  enableOptionalOrigins: z.boolean().optional().describe("Enable customize your origin"),
+  enableDarkMode: z.boolean().optional().describe("Enable character sheet dark mode"),
+  enableContainerCurrency: z.boolean().optional().describe("Enable currency in containers"),
+  longRestType: z.coerce.number().optional().describe("Long rest behavior type"),
+  diceSetId: z.coerce.number().nullable().optional().describe("Visual dice set ID, or null"),
+} as const;
+
+const characterPreferencesSchema = z.object(CHARACTER_PREFERENCE_FIELDS).strict();
+
+const sourceCategoriesSchema = z
+  .array(z.coerce.number().int().positive())
+  .describe("D&D Beyond source category IDs to enable");
+
+const CHARACTER_APPEARANCE_FIELDS = [
+  "age",
+  "height",
+  "weight",
+  "eyes",
+  "skin",
+  "hair",
+  "gender",
+] as const;
+
+const characterAppearanceSchema = z.object({
+  age: z.string().optional(),
+  height: z.string().optional(),
+  weight: z.string().optional(),
+  eyes: z.string().optional(),
+  skin: z.string().optional(),
+  hair: z.string().optional(),
+  gender: z.string().optional(),
+}).strict();
 
 export function registerAllTools(server: McpServer, client: DdbClient): void {
   // Register auth tools
@@ -365,6 +417,9 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
       classId: z.coerce.number().optional().describe("Class ID for quick build. Use search_classes to find IDs. 2024 PHB: 2190875=Barbarian, 2190876=Bard, 2190877=Cleric, 2190878=Druid, 2190879=Fighter, 2190880=Monk, 2190881=Paladin, 2190882=Ranger, 2190883=Rogue, 2190884=Sorcerer, 2190885=Warlock, 2190886=Wizard"),
       entityRaceId: z.coerce.number().optional().describe("Race entity ID for quick build"),
       entityRaceTypeId: z.coerce.number().optional().describe("Race entity type ID for quick build"),
+      preferences: characterPreferencesSchema.optional().describe("Optional character preferences to apply after creation"),
+      sourceCategories: sourceCategoriesSchema.optional().describe("Optional source category IDs to enable after creation"),
+      appearance: characterAppearanceSchema.optional().describe("Optional physical appearance fields to apply after creation"),
     },
     async (params) =>
       createCharacter(client, {
@@ -372,6 +427,9 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
         classId: params.classId,
         entityRaceId: params.entityRaceId,
         entityRaceTypeId: params.entityRaceTypeId,
+        preferences: params.preferences,
+        sourceCategories: params.sourceCategories,
+        appearance: params.appearance,
       })
   );
 
@@ -594,6 +652,53 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
   );
 
   server.tool(
+    "set_character_preferences",
+    "Set D&D Beyond character preferences such as advancement, HP, privacy, source homebrew, optional features, and prerequisite rules.",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      ...CHARACTER_PREFERENCE_FIELDS,
+    },
+    async (params) =>
+      setCharacterPreferences(client, {
+        characterId: params.characterId,
+        useHomebrewContent: params.useHomebrewContent,
+        progressionType: params.progressionType,
+        encumbranceType: params.encumbranceType,
+        ignoreCoinWeight: params.ignoreCoinWeight,
+        hitPointType: params.hitPointType,
+        showUnarmedStrike: params.showUnarmedStrike,
+        showScaledSpells: params.showScaledSpells,
+        primarySense: params.primarySense,
+        primaryMovement: params.primaryMovement,
+        privacyType: params.privacyType,
+        sharingType: params.sharingType,
+        abilityScoreDisplayType: params.abilityScoreDisplayType,
+        enforceFeatRules: params.enforceFeatRules,
+        enforceMulticlassRules: params.enforceMulticlassRules,
+        enableOptionalClassFeatures: params.enableOptionalClassFeatures,
+        enableOptionalOrigins: params.enableOptionalOrigins,
+        enableDarkMode: params.enableDarkMode,
+        enableContainerCurrency: params.enableContainerCurrency,
+        longRestType: params.longRestType,
+        diceSetId: params.diceSetId,
+      })
+  );
+
+  server.tool(
+    "set_character_source_categories",
+    "Set enabled D&D Beyond source categories on a character. Homebrew is controlled separately by set_character_preferences.useHomebrewContent.",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      sourceCategories: sourceCategoriesSchema,
+    },
+    async (params) =>
+      setCharacterSourceCategories(client, {
+        characterId: params.characterId,
+        sourceCategories: params.sourceCategories,
+      })
+  );
+
+  server.tool(
     "set_starting_equipment_type",
     "Set the starting equipment type for a character during creation",
     {
@@ -636,6 +741,22 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
       setGold(client, {
         characterId: params.characterId,
         amount: params.amount,
+      })
+  );
+
+  server.tool(
+    "set_character_appearance",
+    "Set one physical appearance field on a character.",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      field: z.enum(CHARACTER_APPEARANCE_FIELDS).describe("Appearance field to update"),
+      value: z.string().describe("Appearance field value"),
+    },
+    async (params) =>
+      setCharacterAppearance(client, {
+        characterId: params.characterId,
+        field: params.field,
+        value: params.value,
       })
   );
 

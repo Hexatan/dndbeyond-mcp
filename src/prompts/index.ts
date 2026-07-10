@@ -5,9 +5,11 @@ import { registerEncounterBuilderPrompt } from "./encounter-builder.js";
 import { registerSpellAdvisorPrompt } from "./spell-advisor.js";
 import { registerLevelUpGuidePrompt } from "./level-up-guide.js";
 import { registerRulesLookupPrompt } from "./rules-lookup.js";
+import { registerCharacterCreatorPrompt } from "./character-creator.js";
 
 export function registerAllPrompts(server: McpServer): void {
   registerCharacterSummaryPrompt(server);
+  registerCharacterCreatorPrompt(server);
   registerSessionPrepPrompt(server);
   registerEncounterBuilderPrompt(server);
   registerSpellAdvisorPrompt(server);

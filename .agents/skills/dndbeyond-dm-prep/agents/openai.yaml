@@ -1,0 +1,4 @@
+interface:
+  display_name: "D&D Beyond DM Prep"
+  short_description: "Prepare sessions and encounters"
+  default_prompt: "Use $dndbeyond-dm-prep to prepare my next D&D session."

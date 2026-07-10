@@ -1,0 +1,4 @@
+interface:
+  display_name: "D&D Beyond Character Creator"
+  short_description: "Guided D&D Beyond character creation"
+  default_prompt: "Use $dndbeyond-character-creator to guide me through creating a D&D Beyond character."

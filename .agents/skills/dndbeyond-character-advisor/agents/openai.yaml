@@ -1,0 +1,4 @@
+interface:
+  display_name: "D&D Beyond Character Advisor"
+  short_description: "Summarize and advise characters"
+  default_prompt: "Use $dndbeyond-character-advisor to advise me on my D&D Beyond character."

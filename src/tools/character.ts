@@ -1796,28 +1796,61 @@ interface CreateCharacterParams {
   classId?: number;
   entityRaceId?: number;
   entityRaceTypeId?: number;
+  preferences?: CharacterPreferences;
+  sourceCategories?: number[];
+  appearance?: Partial<Record<CharacterAppearanceField, string>>;
 }
 
 export async function createCharacter(
   client: DdbClient,
   params: CreateCharacterParams
 ): Promise<ToolResult> {
+  let characterId: number;
+  let methodLabel: string;
+
   if (params.method === "quick") {
     if (!params.classId || !params.entityRaceId || !params.entityRaceTypeId) {
       return { content: [{ type: "text", text: "Quick build requires classId, entityRaceId, and entityRaceTypeId." }] };
     }
-    const characterId = await client.post<number>(
+    characterId = await client.post<number>(
       ENDPOINTS.character.builder.quickBuild(),
       { classId: params.classId, entityRaceId: params.entityRaceId, entityRaceTypeId: params.entityRaceTypeId }
     );
-    return { content: [{ type: "text", text: `Created character via quick build. Character ID: ${characterId}` }] };
+    methodLabel = "quick";
+  } else {
+    characterId = await client.post<number>(
+      ENDPOINTS.character.builder.standardBuild(),
+      { showHelpText: false }
+    );
+    methodLabel = "standard";
   }
 
-  const characterId = await client.post<number>(
-    ENDPOINTS.character.builder.standardBuild(),
-    { showHelpText: false }
-  );
-  return { content: [{ type: "text", text: `Created character via standard build. Character ID: ${characterId}` }] };
+  const applied: string[] = [];
+  if (params.preferences) {
+    const preferences = definedValues(params.preferences);
+    if (Object.keys(preferences).length > 0) {
+      await putCharacterPreferences(client, characterId, preferences);
+      applied.push("preferences");
+    }
+  }
+
+  if (params.sourceCategories) {
+    await putCharacterSourceCategories(client, characterId, params.sourceCategories);
+    applied.push("source categories");
+  }
+
+  if (params.appearance) {
+    let appearanceCount = 0;
+    for (const [field, value] of Object.entries(params.appearance)) {
+      if (value === undefined) continue;
+      await putCharacterAppearance(client, characterId, field as CharacterAppearanceField, value);
+      appearanceCount++;
+    }
+    if (appearanceCount > 0) applied.push(`${appearanceCount} appearance field(s)`);
+  }
+
+  const suffix = applied.length > 0 ? ` Applied ${applied.join(" and ")}.` : "";
+  return { content: [{ type: "text", text: `Created character via ${methodLabel} build. Character ID: ${characterId}.${suffix}` }] };
 }
 
 interface DeleteCharacterParams {
@@ -1991,6 +2024,137 @@ export async function setAbilityScoreType(
     [`character:${params.characterId}`]
   );
   return { content: [{ type: "text", text: `Set ability score method to ${typeName} on character ${params.characterId}.` }] };
+}
+
+type CharacterPreferences = {
+  useHomebrewContent?: boolean;
+  progressionType?: number;
+  encumbranceType?: number;
+  ignoreCoinWeight?: boolean;
+  hitPointType?: number;
+  showUnarmedStrike?: boolean;
+  showScaledSpells?: boolean;
+  primarySense?: number;
+  primaryMovement?: number;
+  privacyType?: number;
+  sharingType?: number;
+  abilityScoreDisplayType?: number;
+  enforceFeatRules?: boolean;
+  enforceMulticlassRules?: boolean;
+  enableOptionalClassFeatures?: boolean;
+  enableOptionalOrigins?: boolean;
+  enableDarkMode?: boolean;
+  enableContainerCurrency?: boolean;
+  longRestType?: number;
+  diceSetId?: number | null;
+};
+
+interface SetCharacterPreferencesParams extends CharacterPreferences {
+  characterId: number;
+}
+
+interface SetCharacterSourceCategoriesParams {
+  characterId: number;
+  sourceCategories: number[];
+}
+
+function definedValues<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  ) as T;
+}
+
+async function putCharacterPreferences(
+  client: DdbClient,
+  characterId: number,
+  preferences: CharacterPreferences
+): Promise<void> {
+  await client.put(
+    ENDPOINTS.character.setPreferences(),
+    { characterId, ...preferences },
+    [`character:${characterId}`]
+  );
+}
+
+export async function setCharacterPreferences(
+  client: DdbClient,
+  params: SetCharacterPreferencesParams
+): Promise<ToolResult> {
+  const { characterId, ...rawPreferences } = params;
+  const preferences = definedValues(rawPreferences);
+  if (Object.keys(preferences).length === 0) {
+    return { content: [{ type: "text", text: "Provide at least one preference field to update." }] };
+  }
+
+  await putCharacterPreferences(client, characterId, preferences);
+  return { content: [{ type: "text", text: `Updated preferences on character ${characterId}.` }] };
+}
+
+async function putCharacterSourceCategories(
+  client: DdbClient,
+  characterId: number,
+  sourceCategories: number[]
+): Promise<void> {
+  await client.put(
+    ENDPOINTS.character.setSourceCategories(),
+    { characterId, activeSourceCategories: sourceCategories },
+    [`character:${characterId}`]
+  );
+}
+
+export async function setCharacterSourceCategories(
+  client: DdbClient,
+  params: SetCharacterSourceCategoriesParams
+): Promise<ToolResult> {
+  await putCharacterSourceCategories(client, params.characterId, params.sourceCategories);
+  return { content: [{ type: "text", text: `Updated source categories on character ${params.characterId}.` }] };
+}
+
+const CHARACTER_APPEARANCE_FIELDS = [
+  "age",
+  "height",
+  "weight",
+  "eyes",
+  "skin",
+  "hair",
+  "gender",
+] as const;
+
+type CharacterAppearanceField = typeof CHARACTER_APPEARANCE_FIELDS[number];
+
+interface SetCharacterAppearanceParams {
+  characterId: number;
+  field: string;
+  value: string;
+}
+
+function isCharacterAppearanceField(field: string): field is CharacterAppearanceField {
+  return (CHARACTER_APPEARANCE_FIELDS as readonly string[]).includes(field);
+}
+
+async function putCharacterAppearance(
+  client: DdbClient,
+  characterId: number,
+  field: CharacterAppearanceField,
+  value: string
+): Promise<void> {
+  await client.put(
+    ENDPOINTS.character.updateAppearance(field),
+    { characterId, [field]: value },
+    [`character:${characterId}`]
+  );
+}
+
+export async function setCharacterAppearance(
+  client: DdbClient,
+  params: SetCharacterAppearanceParams
+): Promise<ToolResult> {
+  if (!isCharacterAppearanceField(params.field)) {
+    return { content: [{ type: "text", text: `Invalid appearance field "${params.field}". Valid fields: ${CHARACTER_APPEARANCE_FIELDS.join(", ")}` }] };
+  }
+
+  await putCharacterAppearance(client, params.characterId, params.field, params.value);
+  return { content: [{ type: "text", text: `Updated ${params.field} on character ${params.characterId}.` }] };
 }
 
 // ============================================================================

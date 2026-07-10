@@ -34,6 +34,7 @@ export const ENDPOINTS = {
     setRace: () => `${DDB_CHARACTER_SERVICE}/character/v5/race`,
     setAbilityScore: () => `${DDB_CHARACTER_SERVICE}/character/v5/character/ability-score`,
     setPreferences: () => `${DDB_CHARACTER_SERVICE}/character/v5/character/preferences`,
+    setSourceCategories: () => `${DDB_CHARACTER_SERVICE}/character/v5/character/source-categories`,
     setAbilityScoreType: () => `${DDB_CHARACTER_SERVICE}/character/v5/character/ability-score/type`,
     setClassLevel: () => `${DDB_CHARACTER_SERVICE}/character/v5/class/level`,
     updateName: () => `${DDB_CHARACTER_SERVICE}/character/v5/description/name`,

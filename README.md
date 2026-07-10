@@ -1,28 +1,30 @@
 # dndbeyond-mcp
 
-A TypeScript MCP (Model Context Protocol) server for D&D Beyond. Gives Claude (and other MCP-compatible AI assistants) access to your D&D Beyond characters, campaigns, spells, monsters, items, and more.
+A TypeScript MCP (Model Context Protocol) server for D&D Beyond. Gives Claude and other MCP-compatible AI assistants access to your characters, campaigns, encounters, spells, monsters, items, and character builder.
 
-> **This is a fork** of [AlexWorland/dndbeyond-mcp](https://github.com/AlexWorland/dndbeyond-mcp). It adds **edition-aware reference lookups** (2014 vs 2024, resolved via D&D Beyond's `isLegacy` flag) for spells, conditions, and monsters, and makes **`check_auth` a real session-liveness probe**. It is the MCP backend for [dndtools](https://github.com/dmjohnston89/dndtools) and is **built from source** (not published to npm — see Installation). Released via annotated tags (current: **`v0.4.0`**); see [Fork changes](#fork-changes).
+> **This is a fork** of [AlexWorland/dndbeyond-mcp](https://github.com/AlexWorland/dndbeyond-mcp). It adds character creation, encounter management, PDF character sheets, downloadable compendium snapshots, edition-aware reference lookups, and live session checks. The current package version is **`0.5.0`**.
 
 > **Disclaimer:** This project uses unofficial, reverse-engineered D&D Beyond endpoints. It is not affiliated with, endorsed by, or supported by D&D Beyond or Wizards of the Coast. Endpoints may change without notice.
 
 ## Features
 
-- **Character Management** — Read character sheets, look up definitions, update HP, inspiration, conditions, limited-use features, and some builder fields
-- **Character Builder Helpers** — Create/delete characters, set class/species/background, resolve choices, set ability scores, starting equipment, inventory, gold, and description fields
+- **Character Sheets** — Read complete character data, look up definitions, and generate reMarkable-friendly PDFs
+- **Character Gameplay** — Update HP, inspiration, conditions, rests, limited-use features, currency, and supported spell resources
+- **Guided Character Creation** — Conversational character-creator prompt plus tools for class, species, background, ability scores, equipment, preferences, sources, appearance, and builder choices
 - **Campaign Access** — List active or broader user campaigns, view party rosters
+- **Encounter Management** — List, inspect, update, and safely delete saved D&D Beyond encounters
 - **Reference Lookups** — Search and retrieve spells, monsters, magic items, feats, conditions, classes, races, backgrounds, class features, racial traits, and source books — **edition-aware** (2014/2024) for spells, conditions, and monsters
-- **Workflow Prompts** — Session prep, encounter building, level-up guidance, spell recommendations
+- **Compendium Snapshots** — Download resumable, structured JSON snapshots of D&D Beyond reference data
+- **Workflow Prompts** — Character creation and summaries, session prep, encounter building, level-up guidance, spell recommendations, and rules lookup
 - **Browser-Based Auth** — Playwright-powered login flow (no manual cookie extraction)
 
 ## Installation
 
-This fork is **not published to npm**, so `npx dndbeyond-mcp` will not work. Build it from source and check out the pinned release tag:
+This fork is **not published to npm**, so `npx dndbeyond-mcp` will not work. Build it from source:
 
 ```bash
-git clone https://github.com/dmjohnston89/dndbeyond-mcp
+git clone https://github.com/Hexatan/dndbeyond-mcp.git
 cd dndbeyond-mcp
-git checkout v0.4.0
 npm ci
 npm run build
 ```
@@ -39,31 +41,29 @@ npm run setup
 
 This opens a browser window where you log into D&D Beyond normally. The server captures your session cookie automatically and saves it to `~/.dndbeyond-mcp/config.json`.
 
-## Claude Desktop Configuration
+## Download a Compendium Snapshot
 
-Add this to your Claude Desktop configuration file, pointing at the built entrypoint (absolute path):
+After authenticating, you can export the reference content available to your account as compact JSON:
 
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "dndbeyond": {
-      "command": "node",
-      "args": ["/abs/path/to/dndbeyond-mcp/build/src/index.js"]
-    }
-  }
-}
+```bash
+npm run compendium:download
 ```
 
-After adding the configuration, restart Claude Desktop.
+The command writes a manifest plus separate files for spells, monsters, items, classes, feats, races, backgrounds, and game configuration to `~/.dndbeyond-mcp/compendium`. Interrupted downloads resume from checkpoints, and a completed snapshot replaces the previous one atomically.
+
+Use `--output` for a different directory or `--fresh` to discard a saved checkpoint:
+
+```bash
+npm run compendium:download -- --output ./compendium
+npm run compendium:download -- --fresh
+```
 
 ## Tools
 
 ### Character
 - `get_character` — Character by ID or name; `detail` can be `summary`, `sheet` (default), or `full`
 - `list_characters` — All owned characters, including characters outside campaigns
+- `generate_character_sheet_pdf` — Generate an eight-page PDF with light, color, or inverted themes
 - `get_definition` — Look up a character's spell, feat, class feature, racial trait, background feature, or equipped item by name
 
 ### Character Gameplay
@@ -79,15 +79,18 @@ After adding the configuration, restart Claude Desktop.
 - `cast_spell` — Local cantrip tracking; best-effort slot or pact magic decrement for leveled spells
 
 ### Character Builder
-- `create_character` / `delete_character` — Create or delete a D&D Beyond character
+- `create_character` / `delete_character` — Create or delete a character; creation can immediately apply preferences, source categories, and appearance
 - `add_class` / `set_class_level` — Add a class or change class level
 - `set_species` — Set race/species by entity IDs
 - `set_background` / `set_background_choice` — Set background and background choices
 - `set_class_feature_choice` / `set_race_trait_choice` / `set_feat_choice` — Resolve builder choices
 - `resolve_choices` — Auto-resolve unresolved builder choices using first available options
 - `set_ability_score_type` / `set_ability_score` — Set ability score method and values
+- `set_character_preferences` — Configure advancement, HP, privacy, homebrew, optional features, prerequisite rules, and display preferences
+- `set_character_source_categories` — Enable D&D Beyond source categories independently of the homebrew preference
 - `set_starting_equipment_type` / `add_inventory_items` / `set_gold` — Configure starting equipment, add items, set gold
-- `update_character_name` / `update_description` — Update name and supported description fields
+- `set_character_appearance` — Update age, height, weight, eyes, skin, hair, or gender
+- `update_character_name` / `update_description` — Update name and supported description fields and notes
 
 ### Campaign
 - `list_campaigns` — Active campaigns by default; `includeAll` uses D&D Beyond's broader `user-campaigns` endpoint
@@ -137,20 +140,19 @@ D&D Beyond's unofficial write endpoints are inconsistent. HP, inspiration, condi
 | Prompt | Purpose |
 |--------|---------|
 | `character-summary` | Full character rundown |
+| `character-creator` | Conversational, confirmation-first character creation workflow |
 | `session-prep` | DM session preparation |
 | `encounter-builder` | Balanced encounter design |
 | `spell-advisor` | Spell recommendations |
 | `level-up-guide` | Level-up walkthrough |
 | `rules-lookup` | Rules clarification |
 
-## Fork changes
+## Version History
 
-Released as annotated tags (dndtools pins one by tag):
-
-- **Unreleased** — Expanded README/tool inventory; exposed `includeAll` campaign lookups; fixed monster `page`; improved spellcasting ability and speed display; routed GP updates through the newer gold endpoint while marking remaining legacy writes as best-effort.
-- **`v0.2.0`** — Edition-aware **conditions**: a 2024 (SRD 5.2) condition set plus an `edition` parameter on `get_condition` (default `2014`).
-- **`v0.3.0`** — Edition-aware **monster search + lookup**: `search_monsters` / `get_monster` resolve the requested edition via D&D Beyond's `isLegacy` flag — preferring the selected edition, collapsing cross-edition duplicate names, and keeping/tagging other-edition-only results. Mirrors the existing `get_spell` edition handling.
+- **`v0.5.0`** — Adds the guided `character-creator` workflow; character preferences, source categories, and appearance controls; resumable compendium snapshots; encounter management; PDF character sheets; bearer authentication support; and expanded character/tool output.
 - **`v0.4.0`** — `check_auth` is now a **real session-liveness probe**: it performs a cobalt-token exchange against D&D Beyond rather than only checking whether a config file exists, so callers can detect an expired-but-present cookie.
+- **`v0.3.0`** — Edition-aware **monster search + lookup**: `search_monsters` / `get_monster` resolve the requested edition via D&D Beyond's `isLegacy` flag — preferring the selected edition, collapsing cross-edition duplicate names, and keeping/tagging other-edition-only results. Mirrors the existing `get_spell` edition handling.
+- **`v0.2.0`** — Edition-aware **conditions**: a 2024 (SRD 5.2) condition set plus an `edition` parameter on `get_condition` (default `2014`).
 
 ## Security
 

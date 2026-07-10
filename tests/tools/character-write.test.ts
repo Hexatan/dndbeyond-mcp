@@ -1,5 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { updateHp, updateSpellSlots, updateDeathSaves, updateCurrency, useAbility } from "../../src/tools/character.js";
+import {
+  createCharacter,
+  setCharacterAppearance,
+  setCharacterPreferences,
+  setCharacterSourceCategories,
+  updateCurrency,
+  updateDeathSaves,
+  updateHp,
+  updateSpellSlots,
+  useAbility,
+} from "../../src/tools/character.js";
 import type { DdbClient } from "../../src/api/client.js";
 import type { DdbCharacter } from "../../src/types/character.js";
 
@@ -430,5 +440,166 @@ describe("updateHp with temporary HP", () => {
       ["character:123"]
     );
     expect(result.content[0].text).toContain("(0 temp HP)");
+  });
+});
+
+describe("setCharacterPreferences", () => {
+  it("should update provided preference fields", async () => {
+    const mockClient = {
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await setCharacterPreferences(mockClient, {
+      characterId: 123,
+      progressionType: 2,
+      hitPointType: 1,
+      enableOptionalClassFeatures: true,
+      diceSetId: null,
+    });
+
+    expect(mockClient.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/character/preferences"),
+      {
+        characterId: 123,
+        progressionType: 2,
+        hitPointType: 1,
+        enableOptionalClassFeatures: true,
+        diceSetId: null,
+      },
+      ["character:123"]
+    );
+    expect(result.content[0].text).toContain("Updated preferences");
+  });
+
+  it("should reject empty preference updates", async () => {
+    const mockClient = {
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await setCharacterPreferences(mockClient, { characterId: 123 });
+
+    expect(mockClient.put).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain("Provide at least one preference field");
+  });
+});
+
+describe("setCharacterSourceCategories", () => {
+  it("should update active source categories", async () => {
+    const mockClient = {
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await setCharacterSourceCategories(mockClient, {
+      characterId: 123,
+      sourceCategories: [24, 26],
+    });
+
+    expect(mockClient.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/character/source-categories"),
+      { characterId: 123, activeSourceCategories: [24, 26] },
+      ["character:123"]
+    );
+    expect(result.content[0].text).toContain("Updated source categories");
+  });
+
+  it("should allow disabling all toggled source categories", async () => {
+    const mockClient = {
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    await setCharacterSourceCategories(mockClient, {
+      characterId: 123,
+      sourceCategories: [],
+    });
+
+    expect(mockClient.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/character/source-categories"),
+      { characterId: 123, activeSourceCategories: [] },
+      ["character:123"]
+    );
+  });
+});
+
+describe("setCharacterAppearance", () => {
+  it("should update a physical appearance field", async () => {
+    const mockClient = {
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await setCharacterAppearance(mockClient, {
+      characterId: 123,
+      field: "hair",
+      value: "Black",
+    });
+
+    expect(mockClient.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/description/hair"),
+      { characterId: 123, hair: "Black" },
+      ["character:123"]
+    );
+    expect(result.content[0].text).toContain("Updated hair");
+  });
+
+  it("should reject unknown appearance fields", async () => {
+    const mockClient = {
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await setCharacterAppearance(mockClient, {
+      characterId: 123,
+      field: "backstory",
+      value: "Nope",
+    });
+
+    expect(mockClient.put).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain("Invalid appearance field");
+  });
+});
+
+describe("createCharacter", () => {
+  it("should apply preferences and appearance after standard creation", async () => {
+    const mockClient = {
+      post: vi.fn().mockResolvedValue(456),
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await createCharacter(mockClient, {
+      method: "standard",
+      preferences: {
+        progressionType: 1,
+        useHomebrewContent: true,
+      },
+      sourceCategories: [24, 26],
+      appearance: {
+        eyes: "Green",
+        height: "5'9\"",
+      },
+    });
+
+    expect(mockClient.post).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/builder/standard-build"),
+      { showHelpText: false }
+    );
+    expect(mockClient.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/character/preferences"),
+      { characterId: 456, progressionType: 1, useHomebrewContent: true },
+      ["character:456"]
+    );
+    expect(mockClient.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/character/source-categories"),
+      { characterId: 456, activeSourceCategories: [24, 26] },
+      ["character:456"]
+    );
+    expect(mockClient.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/description/eyes"),
+      { characterId: 456, eyes: "Green" },
+      ["character:456"]
+    );
+    expect(mockClient.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/description/height"),
+      { characterId: 456, height: "5'9\"" },
+      ["character:456"]
+    );
+    expect(result.content[0].text).toContain("Applied preferences and source categories and 2 appearance field(s)");
   });
 });
