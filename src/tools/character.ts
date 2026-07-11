@@ -12,6 +12,8 @@ import type {
   DdbRacialTrait,
   DdbInventoryItem,
   DdbMovementSpeeds,
+  DdbChoice,
+  DdbChoiceOption,
 } from "../types/character.js";
 import { fuzzyMatch } from "../utils/fuzzy-match.js";
 import { ABILITY_NAMES, calculateAbilityModifier, sumModifierBonuses, computeFinalAbilityScore, computeLevel, calculateMaxHp, calculateCurrentHp, calculateAc, calculateSpellSlots } from "../utils/character-calculations.js";
@@ -351,7 +353,8 @@ function formatLimitedUseResources(char: DdbCharacter): string {
         const used = action.limitedUse.numberUsed;
         const max = action.limitedUse.maxUses;
         const remaining = max - used;
-        const reset = action.limitedUse.resetTypeDescription || "unknown";
+        const reset = action.limitedUse.resetTypeDescription
+          || ({ 1: "Short Rest", 2: "Long Rest" }[action.limitedUse.resetType] ?? "unknown");
         resources.push(`  ${action.name}: ${remaining}/${max} (${reset})`);
       }
     }
@@ -406,7 +409,7 @@ function formatClassFeatureNames(char: DdbCharacter): string {
 }
 
 function formatRacialTraitNames(char: DdbCharacter): string {
-  const traits = char.race.racialTraits ?? [];
+  const traits = char.race?.racialTraits ?? [];
   if (traits.length === 0) return "None";
   return traits.map((t) => t.definition.name).join(", ");
 }
@@ -442,8 +445,8 @@ function extractSpeeds(char: DdbCharacter): DdbMovementSpeeds {
   return normalizeSpeeds(char.weightSpeeds?.normal)
     ?? normalizeSpeeds(char.speeds)
     ?? normalizeSpeeds(char.speed)
-    ?? normalizeSpeeds(char.race.weightSpeeds?.normal)
-    ?? normalizeSpeeds(char.race.speed)
+    ?? normalizeSpeeds(char.race?.weightSpeeds?.normal)
+    ?? normalizeSpeeds(char.race?.speed)
     ?? {};
 }
 
@@ -556,7 +559,7 @@ function formatNotes(char: DdbCharacter): string {
 function formatCharacterSheet(char: DdbCharacter): string {
   const sections = [
     `=== ${char.name} ===`,
-    `Race: ${char.race.fullName}`,
+    `Race: ${char.race?.fullName ?? "Unselected"}`,
     `Class: ${formatClasses(char)}`,
     `Level: ${computeLevel(char)} (Proficiency Bonus: +${calculateProficiencyBonus(computeLevel(char))})`,
     `Background: ${char.background?.definition?.name ?? "None"}`,
@@ -885,9 +888,9 @@ function formatCharacterFull(char: DdbCharacter): string {
   }
 
   // Racial traits
-  const traits = char.race.racialTraits ?? [];
+  const traits = char.race?.racialTraits ?? [];
   if (traits.length > 0) {
-    const traitDefs = traits.map((t) => formatRacialTraitDefinition(t, char.race.fullName));
+    const traitDefs = traits.map((t) => formatRacialTraitDefinition(t, char.race?.fullName ?? "Unselected"));
     definitionSections.push(`\n=== Racial Trait Definitions ===\n\n${traitDefs.join("\n\n---\n\n")}`);
   }
 
@@ -916,7 +919,7 @@ function formatCharacterFull(char: DdbCharacter): string {
 function formatCharacter(char: DdbCharacter): string {
   const sections = [
     `Name: ${char.name}`,
-    `Race: ${char.race.fullName}`,
+    `Race: ${char.race?.fullName ?? "Unselected"}`,
     `Class: ${formatClasses(char)}`,
     `Level: ${computeLevel(char)}`,
     `HP: ${formatHp(char)}`,
@@ -1876,6 +1879,383 @@ export async function addClass(
   return { content: [{ type: "text", text: `Added class ${params.classId} at level ${params.level} to character ${params.characterId}.` }] };
 }
 
+type SubclassDefinition = { id: number; name: string; parentClassId: number };
+
+async function getCharacterClass(
+  client: DdbClient,
+  characterId: number,
+  className?: string
+): Promise<{ character: DdbCharacter; characterClass: DdbClass } | { error: string }> {
+  const character = await client.get<DdbCharacter>(
+    ENDPOINTS.character.get(characterId),
+    `character:${characterId}`
+  );
+  const classes = character.classes ?? [];
+  if (classes.length === 0) return { error: `Character ${characterId} has no class.` };
+
+  if (!className) {
+    if (classes.length > 1) return { error: "className is required for multiclass characters." };
+    return { character, characterClass: classes[0] };
+  }
+
+  const characterClass = classes.find(
+    (entry) => entry.definition.name.toLowerCase() === className.toLowerCase()
+  );
+  return characterClass
+    ? { character, characterClass }
+    : { error: `Character ${characterId} does not have the ${className} class.` };
+}
+
+async function getSubclasses(client: DdbClient, baseClassId: number): Promise<SubclassDefinition[]> {
+  return client.get<SubclassDefinition[]>(
+    ENDPOINTS.gameData.subclasses(baseClassId),
+    `subclasses:${baseClassId}`
+  );
+}
+
+function matchName<T extends { name: string }>(items: T[], name: string): T | undefined {
+  const exact = items.find((item) => item.name.toLowerCase() === name.toLowerCase());
+  if (exact) return exact;
+  const closest = fuzzyMatch(name, items.map((item) => item.name))[0];
+  return closest ? items.find((item) => item.name === closest) : undefined;
+}
+
+function matchSpell(spells: DdbSpell[], name: string): DdbSpell | undefined {
+  const matchedName = matchName(spells.map((spell) => spell.definition), name)?.name;
+  return matchedName ? spells.find((spell) => spell.definition.name === matchedName) : undefined;
+}
+
+type GameDataClass = {
+  id: number;
+  classFeatures?: Array<{ id: number; name: string }>;
+};
+
+function getEmbeddedChoiceOptions(character: DdbCharacter, choice: DdbChoice): DdbChoiceOption[] {
+  const definitionId = `${choice.componentTypeId}-${choice.type}`;
+  const options = character.choices?.choiceDefinitions?.find(
+    (definition) => definition.id === definitionId
+  )?.options ?? [];
+  if (!choice.optionIds?.length) return options;
+  const allowed = new Set(choice.optionIds);
+  return options.filter((option) => allowed.has(option.id));
+}
+
+async function getChoiceOptions(
+  client: DdbClient,
+  character: DdbCharacter,
+  characterClass: DdbClass,
+  choice: DdbChoice
+): Promise<DdbChoiceOption[]> {
+  const embedded = getEmbeddedChoiceOptions(character, choice);
+  if (embedded.length > 0) return embedded;
+  if (choice.type === 7) {
+    return (await getSubclasses(client, characterClass.definition.id))
+      .map((subclass) => ({ id: subclass.id, label: subclass.name }));
+  }
+  if (choice.type === 6) {
+    const feats = await client.get<Array<{ id: number; name: string }>>(
+      ENDPOINTS.gameData.feats(),
+      "game-data:feats",
+      86_400_000
+    );
+    return feats.map((feat) => ({ id: feat.id, label: feat.name }));
+  }
+  return [];
+}
+
+function matchChoiceOption(options: DdbChoiceOption[], name: string): DdbChoiceOption | undefined {
+  const exact = options.find((option) => option.label.toLowerCase() === name.toLowerCase());
+  if (exact) return exact;
+  const closest = fuzzyMatch(name, options.map((option) => option.label))[0];
+  return closest ? options.find((option) => option.label === closest) : undefined;
+}
+
+async function getClassFeatureNames(
+  client: DdbClient,
+  characterClass: DdbClass
+): Promise<Map<number, string>> {
+  const classes = await client.get<GameDataClass[]>(
+    ENDPOINTS.gameData.classes(),
+    "game-data:classes",
+    86_400_000
+  );
+  const names = new Map(
+    (classes.find((entry) => entry.id === characterClass.definition.id)?.classFeatures ?? [])
+      .map((feature) => [feature.id, feature.name] as const)
+  );
+  for (const feature of characterClass.classFeatures ?? []) {
+    if (feature.definition?.id) names.set(feature.definition.id, feature.definition.name);
+  }
+  for (const feature of characterClass.subclassDefinition?.classFeatures ?? []) {
+    if (feature.id) names.set(feature.id, feature.name ?? `Feature ${feature.id}`);
+  }
+  return names;
+}
+
+export async function listClassFeatureChoices(
+  client: DdbClient,
+  params: { characterId: number; className?: string }
+): Promise<ToolResult> {
+  const context = await getCharacterClass(client, params.characterId, params.className);
+  if ("error" in context) return { content: [{ type: "text", text: context.error }] };
+
+  const { character, characterClass } = context;
+  const featureNames = await getClassFeatureNames(client, characterClass);
+  const allChoices = character.choices?.class ?? [];
+  const choices = allChoices.filter((choice) => featureNames.has(choice.componentId));
+  const relevantChoices = choices.length > 0 || character.classes.length > 1 ? choices : allChoices;
+  if (relevantChoices.length === 0) {
+    return { content: [{ type: "text", text: `No class feature choices found for ${characterClass.definition.name}.` }] };
+  }
+
+  const listedChoices = await Promise.all(relevantChoices.map(async (choice) => {
+    const options = await getChoiceOptions(client, character, characterClass, choice);
+    const current = options.find((option) => option.id === choice.optionValue);
+    return {
+      featureName: featureNames.get(choice.componentId) ?? choice.label ?? `Feature ${choice.componentId}`,
+      featureId: choice.componentId,
+      choiceKey: choice.id,
+      type: choice.type,
+      resolved: choice.optionValue !== null,
+      current: choice.optionValue === null
+        ? null
+        : { id: choice.optionValue, label: current?.label ?? null },
+      options: options.map((option) => ({ id: option.id, label: option.label })),
+    };
+  }));
+  const result = {
+    className: characterClass.definition.name,
+    classId: characterClass.subclassDefinition?.id ?? characterClass.definition.id,
+    classMappingId: characterClass.id,
+    choices: listedChoices,
+  };
+  return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+}
+
+export async function listSubclasses(
+  client: DdbClient,
+  params: { baseClassId: number }
+): Promise<ToolResult> {
+  const subclasses = await getSubclasses(client, params.baseClassId);
+  const lines = subclasses.map((subclass) => `ID ${subclass.id} | ${subclass.name}`);
+  return { content: [{ type: "text", text: lines.length ? lines.join("\n") : "No subclasses found." }] };
+}
+
+export async function setSubclass(
+  client: DdbClient,
+  params: { characterId: number; subclassName: string; className?: string }
+): Promise<ToolResult> {
+  const context = await getCharacterClass(client, params.characterId, params.className);
+  if ("error" in context) return { content: [{ type: "text", text: context.error }] };
+
+  const { character, characterClass } = context;
+  const subclasses = await getSubclasses(client, characterClass.definition.id);
+  const subclass = matchName(subclasses, params.subclassName);
+  if (!subclass) return { content: [{ type: "text", text: `No subclass found matching "${params.subclassName}".` }] };
+
+  const featureNames = new Map(
+    (characterClass.classFeatures ?? []).map((feature) => [feature.definition?.id, feature.definition?.name ?? ""])
+  );
+  const choice = ((character.choices as any)?.class ?? []).find((entry: any) => {
+    const featureName = featureNames.get(entry.componentId) ?? entry.label ?? "";
+    return entry.type === 7 || /subclass|origin|domain|circle|college|oath|tradition|archetype|path|patron|conclave/i.test(featureName);
+  });
+  if (!choice) return { content: [{ type: "text", text: `No subclass choice found for ${characterClass.definition.name}.` }] };
+
+  await client.put(
+    ENDPOINTS.character.setClassFeatureChoice(),
+    {
+      characterId: params.characterId,
+      classId: characterClass.definition.id,
+      classFeatureId: choice.componentId,
+      classMappingId: characterClass.id,
+      type: choice.type,
+      choiceKey: choice.id,
+      choiceValue: subclass.id,
+      parentChoiceId: null,
+    },
+    [`character:${params.characterId}`]
+  );
+  return { content: [{ type: "text", text: `Set ${characterClass.definition.name} subclass to ${subclass.name} on ${character.name}.` }] };
+}
+
+async function getClassSpellCatalogue(
+  client: DdbClient,
+  characterClass: DdbClass
+): Promise<DdbSpell[]> {
+  const spellListId = characterClass.definition.id;
+  const pickerSpells = await client.get<DdbSpell[]>(
+    ENDPOINTS.gameData.spells(spellListId, characterClass.level),
+    `class-spells:${spellListId}:${characterClass.level}`
+  );
+  if (pickerSpells.some((spell) => spell.definition.level > 0)) return pickerSpells;
+
+  const classSpells = await client.get<DdbSpell[]>(
+    ENDPOINTS.gameData.alwaysKnownSpells(spellListId, characterClass.level),
+    `class-spells:${spellListId}:${characterClass.level}:known`
+  );
+  const byDefinition = new Map<number | string, DdbSpell>();
+  for (const spell of [...pickerSpells, ...classSpells]) {
+    byDefinition.set(spell.definition.id ?? spell.definition.name, spell);
+  }
+  return [...byDefinition.values()];
+}
+
+export async function listClassSpells(
+  client: DdbClient,
+  params: { characterId: number; className?: string; name?: string; level?: number }
+): Promise<ToolResult> {
+  const context = await getCharacterClass(client, params.characterId, params.className);
+  if ("error" in context) return { content: [{ type: "text", text: context.error }] };
+  let spells = await getClassSpellCatalogue(client, context.characterClass);
+  if (params.name) spells = spells.filter((spell) => spell.definition.name.toLowerCase().includes(params.name!.toLowerCase()));
+  if (params.level !== undefined) spells = spells.filter((spell) => spell.definition.level === params.level);
+  const lines = spells.map((spell) =>
+    `ID ${spell.id} | Definition ${spell.definition.id} | Entity ${spell.entityTypeId} | Level ${spell.definition.level} | ${spell.definition.name}`
+  );
+  return { content: [{ type: "text", text: lines.length ? lines.join("\n") : "No class spells found." }] };
+}
+
+export async function addCharacterSpell(
+  client: DdbClient,
+  params: { characterId: number; spellName: string; className?: string }
+): Promise<ToolResult> {
+  const context = await getCharacterClass(client, params.characterId, params.className);
+  if ("error" in context) return { content: [{ type: "text", text: context.error }] };
+  const spell = matchSpell(await getClassSpellCatalogue(client, context.characterClass), params.spellName);
+  if (!spell?.definition.id || !spell.entityTypeId) {
+    return { content: [{ type: "text", text: `No eligible class spell found matching "${params.spellName}".` }] };
+  }
+  await client.post(
+    ENDPOINTS.character.spell(),
+    {
+      characterId: params.characterId,
+      characterClassId: context.characterClass.id,
+      spellId: spell.definition.id,
+      id: spell.id,
+      entityTypeId: spell.entityTypeId,
+    },
+    [`character:${params.characterId}`]
+  );
+  return { content: [{ type: "text", text: `Added ${spell.definition.name} to ${context.character.name}.` }] };
+}
+
+export async function addCharacterSpells(
+  client: DdbClient,
+  params: { characterId: number; spellNames: string[]; className?: string }
+): Promise<ToolResult> {
+  const context = await getCharacterClass(client, params.characterId, params.className);
+  if ("error" in context) return { content: [{ type: "text", text: context.error }] };
+
+  const catalogue = await getClassSpellCatalogue(client, context.characterClass);
+  const selected = context.character.classSpells?.find(
+    (entry) => entry.characterClassId === context.characterClass.id
+  )?.spells ?? context.character.spells.class ?? [];
+  const existing = new Set(selected.map((spell) => spell.definition.name.toLowerCase()));
+  const added: string[] = [];
+  const skipped: string[] = [];
+
+  for (const requestedName of [...new Set(params.spellNames)]) {
+    const spell = matchSpell(catalogue, requestedName);
+    if (!spell?.definition.id || !spell.entityTypeId) {
+      skipped.push(requestedName);
+      continue;
+    }
+    if (existing.has(spell.definition.name.toLowerCase())) continue;
+
+    await client.post(
+      ENDPOINTS.character.spell(),
+      {
+        characterId: params.characterId,
+        characterClassId: context.characterClass.id,
+        spellId: spell.definition.id,
+        id: spell.id,
+        entityTypeId: spell.entityTypeId,
+      },
+      [`character:${params.characterId}`]
+    );
+    existing.add(spell.definition.name.toLowerCase());
+    added.push(spell.definition.name);
+  }
+
+  const suffix = skipped.length > 0 ? ` Missing or ineligible: ${skipped.join(", ")}.` : "";
+  return { content: [{ type: "text", text: `Added ${added.length} spell(s) to ${context.character.name}: ${added.join(", ") || "none"}.${suffix}` }] };
+}
+
+export async function setCharacterSpellsPrepared(
+  client: DdbClient,
+  params: { characterId: number; spellNames: string[]; prepared: boolean; className?: string }
+): Promise<ToolResult> {
+  const context = await getCharacterClass(client, params.characterId, params.className);
+  if ("error" in context) return { content: [{ type: "text", text: context.error }] };
+
+  const catalogue = await getClassSpellCatalogue(client, context.characterClass);
+  const selected = context.character.classSpells?.find(
+    (entry) => entry.characterClassId === context.characterClass.id
+  )?.spells ?? context.character.spells.class ?? [];
+  const selectedByName = new Map(selected.map((spell) => [spell.definition.name.toLowerCase(), spell]));
+  const changed: string[] = [];
+  const skipped: string[] = [];
+
+  for (const requestedName of [...new Set(params.spellNames)]) {
+    const spell = matchSpell(catalogue, requestedName);
+    if (!spell?.definition.id || !spell.entityTypeId || spell.definition.level === 0) {
+      skipped.push(requestedName);
+      continue;
+    }
+    const current = selectedByName.get(spell.definition.name.toLowerCase());
+    if (current?.alwaysPrepared || current?.prepared === params.prepared) continue;
+
+    await client.put(
+      ENDPOINTS.character.preparedSpell(),
+      {
+        characterId: params.characterId,
+        spellId: spell.definition.id,
+        characterClassId: context.characterClass.id,
+        entityTypeId: spell.entityTypeId,
+        id: spell.id,
+        prepared: params.prepared,
+      },
+      [`character:${params.characterId}`]
+    );
+    changed.push(spell.definition.name);
+  }
+
+  const action = params.prepared ? "Prepared" : "Unprepared";
+  const suffix = skipped.length > 0 ? ` Missing, ineligible, or cantrip: ${skipped.join(", ")}.` : "";
+  return { content: [{ type: "text", text: `${action} ${changed.length} spell(s) on ${context.character.name}: ${changed.join(", ") || "none"}.${suffix}` }] };
+}
+
+export async function removeCharacterSpell(
+  client: DdbClient,
+  params: { characterId: number; spellName: string; className?: string }
+): Promise<ToolResult> {
+  const context = await getCharacterClass(client, params.characterId, params.className);
+  if ("error" in context) return { content: [{ type: "text", text: context.error }] };
+  const classSpells = context.character.classSpells?.find(
+    (entry) => entry.characterClassId === context.characterClass.id
+  )?.spells ?? context.character.spells.class ?? [];
+  const selected = matchSpell(classSpells, params.spellName);
+  if (!selected) return { content: [{ type: "text", text: `${params.spellName} is not selected for ${context.characterClass.definition.name}.` }] };
+  const catalogueSpell = matchSpell(await getClassSpellCatalogue(client, context.characterClass), selected.definition.name);
+  const spell = catalogueSpell ?? selected;
+  if (!spell.definition.id || !spell.entityTypeId) {
+    return { content: [{ type: "text", text: `Could not resolve API identifiers for ${selected.definition.name}.` }] };
+  }
+  await client.delete(
+    ENDPOINTS.character.spell(),
+    {
+      characterId: params.characterId,
+      spellId: spell.definition.id,
+      characterClassId: context.characterClass.id,
+      entityTypeId: spell.entityTypeId,
+      id: spell.id,
+    },
+    [`character:${params.characterId}`]
+  );
+  return { content: [{ type: "text", text: `Removed ${selected.definition.name} from ${context.character.name}.` }] };
+}
+
 interface SetBackgroundParams {
   characterId: number;
   backgroundId: number;
@@ -2270,34 +2650,83 @@ export async function updateDescription(
 
 interface SetClassFeatureChoiceParams {
   characterId: number;
-  classId: number;
-  classFeatureId: number;
-  classMappingId: number;
-  type: number;
+  classId?: number;
+  classFeatureId?: number;
+  classMappingId?: number;
+  type?: number;
   choiceKey: string;
-  choiceValue: number;
-  parentChoiceId?: number | null;
+  choiceValue?: number;
+  optionName?: string;
+  className?: string;
+  parentChoiceId?: string | number | null;
 }
 
 export async function setClassFeatureChoice(
   client: DdbClient,
   params: SetClassFeatureChoiceParams
 ): Promise<ToolResult> {
+  let classId = params.classId;
+  let classFeatureId = params.classFeatureId;
+  let classMappingId = params.classMappingId;
+  let type = params.type;
+  let choiceValue = params.choiceValue;
+  let parentChoiceId = params.parentChoiceId;
+  let selectedName = params.optionName;
+
+  if (
+    params.optionName
+    || classId === undefined
+    || classFeatureId === undefined
+    || classMappingId === undefined
+    || type === undefined
+  ) {
+    const context = await getCharacterClass(client, params.characterId, params.className);
+    if ("error" in context) return { content: [{ type: "text", text: context.error }] };
+    const choice = context.character.choices?.class?.find((entry) => entry.id === params.choiceKey);
+    if (!choice) {
+      return { content: [{ type: "text", text: `No class choice found with key "${params.choiceKey}".` }] };
+    }
+
+    const options = await getChoiceOptions(client, context.character, context.characterClass, choice);
+    if (params.optionName) {
+      const option = matchChoiceOption(options, params.optionName);
+      if (!option) {
+        const available = options.map((entry) => entry.label).join(", ") || "none";
+        return { content: [{ type: "text", text: `No option found matching "${params.optionName}". Available options: ${available}.` }] };
+      }
+      choiceValue = option.id;
+      selectedName = option.label;
+    } else if (choiceValue !== undefined && options.length > 0 && !options.some((option) => option.id === choiceValue)) {
+      return { content: [{ type: "text", text: `Choice value ${choiceValue} is not valid for "${params.choiceKey}".` }] };
+    }
+
+    classId = context.characterClass.subclassDefinition?.id ?? context.characterClass.definition.id;
+    classFeatureId = choice.componentId;
+    classMappingId = context.characterClass.id;
+    type = choice.type;
+    parentChoiceId ??= choice.parentChoiceId;
+  }
+
+  if (choiceValue === undefined) {
+    return { content: [{ type: "text", text: "Provide either optionName or choiceValue." }] };
+  }
+
   await client.put(
     ENDPOINTS.character.setClassFeatureChoice(),
     {
       characterId: params.characterId,
-      classId: params.classId,
-      classFeatureId: params.classFeatureId,
-      classMappingId: params.classMappingId,
-      type: params.type,
+      classId,
+      classFeatureId,
+      classMappingId,
+      type,
       choiceKey: params.choiceKey,
-      choiceValue: params.choiceValue,
-      parentChoiceId: params.parentChoiceId ?? null,
+      choiceValue,
+      parentChoiceId: parentChoiceId ?? null,
     },
     [`character:${params.characterId}`]
   );
-  return { content: [{ type: "text", text: `Set class feature choice on character ${params.characterId}.` }] };
+  const selected = selectedName ? ` to ${selectedName}` : "";
+  return { content: [{ type: "text", text: `Set class feature choice${selected} on character ${params.characterId}.` }] };
 }
 
 interface SetRaceTraitChoiceParams {
@@ -2364,6 +2793,7 @@ export async function resolveChoices(
   const resolved: string[] = [];
   const skipped: string[] = [];
   const configFixed: string[] = [];
+  let subclassOptions: SubclassDefinition[] | undefined;
 
   // First, fix missing configuration fields
   const initialChar = await client.get<DdbCharacter>(
@@ -2445,6 +2875,11 @@ export async function resolveChoices(
             optionId = options[0].id;
           }
         }
+      }
+
+      if (!optionId && category === "class" && choice.type === 7 && classId) {
+        subclassOptions ??= await getSubclasses(client, classId);
+        optionId = subclassOptions[0]?.id ?? null;
       }
 
       if (!optionId) {

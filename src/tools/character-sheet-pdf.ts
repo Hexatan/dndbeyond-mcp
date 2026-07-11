@@ -6,6 +6,7 @@ import { ENDPOINTS } from "../api/endpoints.js";
 import type {
   DdbAction,
   DdbCharacter,
+  DdbChoice,
   DdbClass,
   DdbClassFeature,
   DdbInventoryItem,
@@ -101,6 +102,12 @@ interface ProficiencyCategories {
   languages: string[];
 }
 
+interface ResourcePool {
+  name: string;
+  numberUsed: number;
+  maxUses: number;
+}
+
 export interface CharacterSheetData {
   id: number;
   name: string;
@@ -122,7 +129,7 @@ export interface CharacterSheetData {
   pactMagic: { level: number; used: number; available: number } | null;
   actionRows: ActionRow[];
   hitDice: string[];
-  resources: string[];
+  resources: ResourcePool[];
   defenses: SheetField[];
   proficiencies: ProficiencyCategories;
   features: NamedDetail[];
@@ -669,10 +676,7 @@ export function extractCharacterSheetData(char: DdbCharacter): CharacterSheetDat
       name: trait.definition.name,
       detail: featureDetail(char, trait.definition.snippet || trait.definition.description),
     })),
-    feats: (char.feats ?? []).map((feat) => ({
-      name: feat.definition.name,
-      detail: featureDetail(char, feat.definition.snippet || feat.definition.description || feat.definition.prerequisite),
-    })),
+    feats: buildFeats(char),
     inventory,
     carrying: buildCarrying(char, inventory),
     currencies: [
@@ -875,9 +879,7 @@ function drawCombat(pdf: PdfElements, data: CharacterSheetData): void {
   pdf.text(deathX, y + 167, "EXHAUSTION", 5.6, true, pdf.accent("CON", MID));
   for (let i = 0; i < 6; i++) pdf.checkbox(deathX + 58 + i * 12, y + 165, 8, false, pdf.accent("CON", MID));
 
-  if (data.resources.length > 0) {
-    pdf.fitText(x, y + 149, VIRTUAL_W - 2 * MARGIN - 16, `Resources: ${data.resources.join(" | ")}`, 6.8, true, MID);
-  }
+  drawResourceTrackers(pdf, x, y + 149, data.resources);
 
   const headers = ["Attack / Cantrip", "Bonus", "Damage / Type", "Notes"];
   const widths = [150, 60, 110, 170];
@@ -901,6 +903,32 @@ function drawCombat(pdf: PdfElements, data: CharacterSheetData): void {
       pdf.fitText(x + widths[0] + widths[1], yy + 5, widths[2] - 10, action.damage, 8.2, true);
       pdf.fitText(x + widths[0] + widths[1] + widths[2], yy + 5, widths[3] - 10, action.notes, 7.4);
     }
+  }
+}
+
+function drawResourceTrackers(
+  pdf: PdfElements,
+  x: number,
+  y: number,
+  resources: ResourcePool[],
+): void {
+  if (resources.length === 0) return;
+
+  const titleWidth = 52;
+  const gap = 6;
+  const checkboxStep = 8;
+
+  pdf.text(x, y, "RESOURCES", 5.8, true, MID);
+  let cursor = x + titleWidth;
+  for (const resource of resources) {
+    const labelWidth = Math.min(110, Math.max(56, 34 + resource.name.length * 3));
+    const remaining = Math.max(0, resource.maxUses - resource.numberUsed);
+    pdf.fitText(cursor, y, labelWidth - 4, `${resource.name} ${remaining}/${resource.maxUses} left`, 6.2, true);
+    cursor += labelWidth;
+    for (let index = 0; index < resource.maxUses; index++) {
+      pdf.checkbox(cursor + index * checkboxStep, y - 2, Math.max(4, checkboxStep - 2), index < resource.numberUsed);
+    }
+    cursor += resource.maxUses * checkboxStep + gap;
   }
 }
 
@@ -1046,7 +1074,7 @@ function drawDetailSectionColumn(
 }
 
 function drawSpellPages(addPage: () => PdfElements, data: CharacterSheetData): void {
-  const rowH = 29;
+  const rowH = 42;
   const groupH = 22;
   const groupGap = BOX_GAP;
   const bottomY = 24;
@@ -1149,7 +1177,7 @@ function drawSpellRow(pdf: PdfElements, spell: SpellEntry, top: number, height: 
   pdf.fitText(MARGIN + 272, top - 10, 100, spell.range, 6.2);
   pdf.fitText(MARGIN + 376, top - 10, 40, spell.components, 6.2);
   pdf.fitText(MARGIN + 420, top - 10, 132, spell.duration, 6.2);
-  pdf.fitText(MARGIN + 24, top - 22, VIRTUAL_W - 2 * MARGIN - 28, spell.detail, 5.8, false, MID);
+  pdf.textBlock(MARGIN + 24, top - height + 3, VIRTUAL_W - 2 * MARGIN - 28, height - 20, spell.detail, 5.8, 8, MID);
   pdf.line(MARGIN, top - height, VIRTUAL_W - MARGIN, top - height, 0.25, LIGHT);
 }
 
@@ -1388,7 +1416,11 @@ function buildFeatures(char: DdbCharacter): NamedDetail[] {
         const detail = featureDetail(char, featureSnippet(feature), cls);
         if (!detail) continue;
         seen.add(featureName(feature));
-        features.push({ name: featureName(feature), detail });
+        const name = featureName(feature);
+        features.push({ name, detail });
+        if (/\bmetamagic\b/i.test(name)) {
+          features.push(...buildChoiceDetails(char, char.choices?.class, feature.definition?.id, name));
+        }
       }
     }
     for (const feature of cls.subclassDefinition?.classFeatures ?? []) {
@@ -1403,14 +1435,57 @@ function buildFeatures(char: DdbCharacter): NamedDetail[] {
   return features;
 }
 
-function buildResources(char: DdbCharacter): string[] {
-  const resources: string[] = [];
+function buildFeats(char: DdbCharacter): NamedDetail[] {
+  return (char.feats ?? []).flatMap((feat) => {
+    const name = feat.definition.name;
+    const entries: NamedDetail[] = [{
+      name,
+      detail: featureDetail(char, feat.definition.snippet || feat.definition.description || feat.definition.prerequisite),
+    }];
+    if (/\bmetamagic\b/i.test(name)) {
+      entries.push(...buildChoiceDetails(char, char.choices?.feat, feat.definition.id, name));
+    }
+    return entries;
+  });
+}
+
+function buildChoiceDetails(
+  char: DdbCharacter,
+  choices: DdbChoice[] | undefined,
+  componentId: number | undefined,
+  sourceName: string,
+): NamedDetail[] {
+  if (componentId == null) return [];
+
+  const details: NamedDetail[] = [];
+  const seen = new Set<number>();
+  for (const choice of choices ?? []) {
+    if (choice.componentId !== componentId || choice.optionValue == null || seen.has(choice.optionValue)) continue;
+    const definition = char.choices?.choiceDefinitions?.find(
+      (entry) => entry.id === `${choice.componentTypeId}-${choice.type}`,
+    );
+    const option = definition?.options.find((entry) => entry.id === choice.optionValue);
+    if (!option) continue;
+    seen.add(option.id);
+    details.push({
+      name: `${sourceName}: ${option.label}`,
+      detail: featureDetail(char, option.description),
+    });
+  }
+  return details;
+}
+
+function buildResources(char: DdbCharacter): ResourcePool[] {
+  const resources: ResourcePool[] = [];
   for (const list of Object.values(char.actions ?? {}) as DdbAction[][]) {
     if (!Array.isArray(list)) continue;
     for (const action of list) {
       if (!action.limitedUse) continue;
-      const remaining = action.limitedUse.maxUses - action.limitedUse.numberUsed;
-      resources.push(`${action.name}: ${remaining}/${action.limitedUse.maxUses}`);
+      resources.push({
+        name: action.name,
+        numberUsed: action.limitedUse.numberUsed,
+        maxUses: action.limitedUse.maxUses,
+      });
     }
   }
   return resources;
@@ -1760,7 +1835,7 @@ function groupSpells(
       duration: [spellDuration(spell), spell.definition.concentration ? "Conc." : "", spell.definition.ritual ? "Ritual" : ""]
         .filter(Boolean)
         .join(" / "),
-      detail: [spellDamage(spell, characterLevel), shortDetail(spell.definition.description, 115)]
+      detail: [spellDamage(spell, characterLevel), stripHtml(spell.definition.description).replace(/\s+/g, " ").trim()]
         .filter(Boolean)
         .join(" - "),
     });
@@ -1947,15 +2022,6 @@ function featureDetail(char: DdbCharacter, value: string | null | undefined, cls
     .replace(/\{\{[^}]+\}\}/g, "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function shortDetail(value: string | null | undefined, max = 90): string {
-  const text = stripHtml(value)
-    .split(/\.\s+/)[0]
-    .replace(/\s+/g, " ")
-    .trim();
-  if (text.length <= max) return text;
-  return `${text.slice(0, max - 3).trimEnd()}...`;
 }
 
 function passiveScore(data: CharacterSheetData, skillName: string): string {

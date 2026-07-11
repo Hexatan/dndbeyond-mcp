@@ -53,6 +53,15 @@ function createMockCharacter(): DdbCharacter {
         classFeatures: [
           { definition: { name: "Spellcasting", requiredLevel: 1, description: "", snippet: null } },
           { definition: { name: "Font of Magic", requiredLevel: 2, description: "", snippet: null } },
+          {
+            definition: {
+              id: 372,
+              name: "Metamagic",
+              requiredLevel: 3,
+              description: "Use Sorcery Points to customize spells.",
+              snippet: null,
+            },
+          },
         ],
       },
     ],
@@ -235,6 +244,30 @@ function createMockCharacter(): DdbCharacter {
     },
     preferences: {},
     configuration: {},
+    choices: {
+      class: [
+        { componentId: 372, componentTypeId: 12168134, type: 3, optionValue: 111 },
+        { componentId: 372, componentTypeId: 12168134, type: 3, optionValue: 109 },
+      ],
+      feat: [
+        { componentId: 452833, componentTypeId: 1088085227, type: 3, optionValue: 113 },
+      ],
+      choiceDefinitions: [
+        {
+          id: "12168134-3",
+          options: [
+            { id: 111, label: "Quickened Spell", description: "Spend 2 Sorcery Points to cast as a Bonus Action." },
+            { id: 109, label: "Extended Spell", description: "Spend 1 Sorcery Point to double the duration." },
+          ],
+        },
+        {
+          id: "1088085227-3",
+          options: [
+            { id: 113, label: "Twinned Spell", description: "Spend Sorcery Points to affect a second target." },
+          ],
+        },
+      ],
+    },
     actions: {
       class: [
         {
@@ -299,7 +332,20 @@ function createMockCharacter(): DdbCharacter {
       ],
     },
     campaign: { id: 1, name: "Test Campaign" },
-    feats: [],
+    feats: [
+      {
+        componentId: 1,
+        componentTypeId: 12168134,
+        definition: {
+          id: 452833,
+          entityTypeId: 1088085227,
+          name: "Metamagic Adept",
+          description: "Learn two additional Metamagic options.",
+          snippet: null,
+          prerequisite: null,
+        },
+      },
+    ],
     notes: {
       personalPossessions: "Maps and jewelry.",
       backstory: "The test sorcerer grew up with family stories.",
@@ -345,7 +391,16 @@ describe("character sheet PDF", () => {
       { label: "Resistances", value: "Psychic" },
       { label: "Save Advantages", value: "Charmed, Frightened" },
     ]);
-    expect(data.resources).toEqual(["Sorcery Points: 4/6"]);
+    expect(data.resources).toEqual([
+      { name: "Sorcery Points", numberUsed: 2, maxUses: 6 },
+    ]);
+    expect(data.features).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Metamagic: Quickened Spell", detail: "Spend 2 Sorcery Points to cast as a Bonus Action." }),
+      expect.objectContaining({ name: "Metamagic: Extended Spell", detail: "Spend 1 Sorcery Point to double the duration." }),
+    ]));
+    expect(data.feats).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Metamagic Adept: Twinned Spell", detail: "Spend Sorcery Points to affect a second target." }),
+    ]));
     expect(data.actionRows).toEqual([
       { name: "Fire Bolt", bonus: "+7", damage: "2d10 fire", notes: "" },
       { name: "Mind Sliver", bonus: "", damage: "2d6 psychic", notes: "DC 15" },
@@ -364,6 +419,34 @@ describe("character sheet PDF", () => {
       expect.objectContaining({ name: "Sending", status: "P" }),
     ]));
     expect(data.inventory).toHaveLength(3);
+  });
+
+  it.each(["Ki Points", "Focus Points"])("builds a checkbox-ready %s pool", (name) => {
+    const character = createMockCharacter();
+    character.actions.class = [{
+      ...character.actions.class[0],
+      name,
+      limitedUse: {
+        maxUses: 7,
+        numberUsed: 3,
+        resetType: 1,
+        resetTypeDescription: null,
+      },
+    }];
+
+    expect(extractCharacterSheetData(character).resources).toEqual([
+      { name, numberUsed: 3, maxUses: 7 },
+    ]);
+  });
+
+  it("keeps spell descriptions for the two-line spellbook rows", () => {
+    const character = createMockCharacter();
+    const spell = character.classSpells[0].spells[0];
+    spell.definition.description = "A detailed spell description that exceeds the old one-line character limit. It remains available to the two-line spellbook layout instead of being shortened before rendering.";
+
+    const spellData = extractCharacterSheetData(character).spellsByLevel[0].spells.find((entry) => entry.name === spell.definition.name);
+
+    expect(spellData?.detail).toContain("It remains available to the two-line spellbook layout");
   });
 
   it("renders a valid data-backed PDF", async () => {

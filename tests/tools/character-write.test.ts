@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   createCharacter,
+  addCharacterSpell,
+  addCharacterSpells,
+  setCharacterSpellsPrepared,
+  listClassFeatureChoices,
+  listClassSpells,
+  listSubclasses,
+  removeCharacterSpell,
+  resolveChoices,
+  setSubclass,
+  setClassFeatureChoice,
   setCharacterAppearance,
   setCharacterPreferences,
   setCharacterSourceCategories,
@@ -601,5 +611,351 @@ describe("createCharacter", () => {
       ["character:456"]
     );
     expect(result.content[0].text).toContain("Applied preferences and source categories and 2 appearance field(s)");
+  });
+});
+
+const shadowSorcerer = {
+  ...mockCharacter,
+  name: "Test Sorcerer",
+  configuration: { abilityScoreType: 1, startingEquipmentType: 1 },
+  classes: [{
+    id: 234222691,
+    definition: { id: 6, name: "Sorcerer" },
+    subclassDefinition: { id: 114, name: "Shadow Magic", classFeatures: [] },
+    level: 5,
+    isStartingClass: true,
+    classFeatures: [{ definition: { id: 750, name: "Sorcerous Origin", requiredLevel: 1, description: "", snippet: null } }],
+  }],
+} as unknown as DdbCharacter;
+
+const acidSplash = {
+  id: 136018,
+  entityTypeId: 435869154,
+  definition: {
+    id: 1989,
+    name: "Acid Splash",
+    level: 0,
+    school: "Conjuration",
+    description: "",
+    range: null,
+    duration: null,
+    activation: null,
+    components: null,
+    componentsDescription: null,
+    concentration: false,
+    ritual: false,
+  },
+  prepared: false,
+  alwaysPrepared: false,
+  usesSpellSlot: false,
+};
+
+describe("subclass and spell builder APIs", () => {
+  const wizardChoiceCharacter = {
+    ...shadowSorcerer,
+    name: "Choice Wizard",
+    classes: [{
+      id: 234229296,
+      definition: { id: 8, name: "Wizard" },
+      subclassDefinition: { id: 26, name: "School of Evocation", classFeatures: [] },
+      level: 3,
+      isStartingClass: true,
+      classFeatures: [{ definition: { id: 470, name: "Proficiencies", requiredLevel: 1, description: "", snippet: null } }],
+    }],
+    choices: {
+      class: [{
+        id: "2-1597",
+        label: "Choose a Wizard Skill",
+        componentId: 470,
+        componentTypeId: 12168134,
+        type: 2,
+        optionValue: null,
+        optionIds: [4154, 4155],
+      }],
+      choiceDefinitions: [{
+        id: "12168134-2",
+        options: [
+          { id: 4154, label: "Arcana" },
+          { id: 4155, label: "History" },
+          { id: 9999, label: "Not Allowed" },
+        ],
+      }],
+    },
+  } as unknown as DdbCharacter;
+
+  it("lists labeled class choices joined to their class features", async () => {
+    const client = {
+      get: vi.fn()
+        .mockResolvedValueOnce(wizardChoiceCharacter)
+        .mockResolvedValueOnce([{ id: 8, classFeatures: [{ id: 470, name: "Proficiencies" }] }]),
+    } as unknown as DdbClient;
+
+    const result = await listClassFeatureChoices(client, { characterId: 123 });
+    const data = JSON.parse(result.content[0].text);
+
+    expect(data.choices[0]).toEqual(expect.objectContaining({
+      featureName: "Proficiencies",
+      choiceKey: "2-1597",
+      options: [{ id: 4154, label: "Arcana" }, { id: 4155, label: "History" }],
+    }));
+  });
+
+  it("sets a class feature choice by its labeled option name", async () => {
+    const client = {
+      get: vi.fn().mockResolvedValue(wizardChoiceCharacter),
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await setClassFeatureChoice(client, {
+      characterId: 123,
+      choiceKey: "2-1597",
+      optionName: "Arcana",
+    });
+
+    expect(client.put).toHaveBeenCalledWith(
+      expect.stringContaining("/class/feature/choice"),
+      {
+        characterId: 123,
+        classId: 26,
+        classFeatureId: 470,
+        classMappingId: 234229296,
+        type: 2,
+        choiceKey: "2-1597",
+        choiceValue: 4154,
+        parentChoiceId: null,
+      },
+      ["character:123"]
+    );
+    expect(result.content[0].text).toContain("Arcana");
+  });
+
+  it("fills subclass choices from the subclass catalogue", async () => {
+    const character = {
+      ...wizardChoiceCharacter,
+      classes: [{ ...wizardChoiceCharacter.classes[0], subclassDefinition: null }],
+      choices: {
+        class: [{
+          id: "7-412",
+          componentId: 412,
+          componentTypeId: 12168134,
+          type: 7,
+          optionValue: null,
+          optionIds: [],
+        }],
+        choiceDefinitions: [{ id: "12168134-7", options: [] }],
+      },
+    } as unknown as DdbCharacter;
+    const client = {
+      get: vi.fn()
+        .mockResolvedValueOnce(character)
+        .mockResolvedValueOnce([{ id: 8, classFeatures: [{ id: 412, name: "Arcane Tradition" }] }])
+        .mockResolvedValueOnce([{ id: 26, name: "School of Evocation", parentClassId: 8 }]),
+    } as unknown as DdbClient;
+
+    const result = await listClassFeatureChoices(client, { characterId: 123 });
+    const data = JSON.parse(result.content[0].text);
+
+    expect(data.choices[0].options).toEqual([{ id: 26, label: "School of Evocation" }]);
+  });
+
+  it("fills feat choices from the feat catalogue and preserves their parent", async () => {
+    const character = {
+      ...wizardChoiceCharacter,
+      choices: {
+        class: [{
+          id: "6-268",
+          label: "Choose a Feat",
+          componentId: 268,
+          componentTypeId: 12168134,
+          type: 6,
+          optionValue: null,
+          optionIds: [],
+          parentChoiceId: "1-268",
+        }],
+        choiceDefinitions: [{ id: "12168134-6", options: [] }],
+      },
+    } as unknown as DdbCharacter;
+    const client = {
+      get: vi.fn()
+        .mockResolvedValueOnce(character)
+        .mockResolvedValueOnce([{ id: 41, name: "Sentinel" }]),
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    await setClassFeatureChoice(client, {
+      characterId: 123,
+      choiceKey: "6-268",
+      optionName: "Sentinel",
+    });
+
+    expect(client.put).toHaveBeenCalledWith(
+      expect.stringContaining("/class/feature/choice"),
+      expect.objectContaining({ choiceValue: 41, parentChoiceId: "1-268" }),
+      ["character:123"]
+    );
+  });
+
+  it("lists subclasses from the live game-data endpoint", async () => {
+    const client = { get: vi.fn().mockResolvedValue([{ id: 114, name: "Shadow Magic", parentClassId: 6 }]) } as unknown as DdbClient;
+
+    const result = await listSubclasses(client, { baseClassId: 6 });
+
+    expect(client.get).toHaveBeenCalledWith(expect.stringContaining("/game-data/subclasses?sharingSetting=2&baseClassId=6"), "subclasses:6");
+    expect(result.content[0].text).toContain("ID 114 | Shadow Magic");
+  });
+
+  it("sets a subclass using its catalogue ID", async () => {
+    const character = {
+      ...shadowSorcerer,
+      classes: [{ ...shadowSorcerer.classes[0], subclassDefinition: null }],
+      choices: { class: [{ id: "7-750", type: 7, componentId: 750, optionValue: null }] },
+    } as unknown as DdbCharacter;
+    const client = {
+      get: vi.fn().mockResolvedValueOnce(character).mockResolvedValueOnce([{ id: 114, name: "Shadow Magic", parentClassId: 6 }]),
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    await setSubclass(client, { characterId: 123, subclassName: "Shadow Magic" });
+
+    expect(client.put).toHaveBeenCalledWith(
+      expect.stringContaining("/class/feature/choice"),
+      expect.objectContaining({ characterId: 123, classId: 6, classMappingId: 234222691, choiceValue: 114 }),
+      ["character:123"]
+    );
+  });
+
+  it("changes an already selected subclass", async () => {
+    const character = {
+      ...shadowSorcerer,
+      choices: { class: [{ id: "7-750", type: 7, componentId: 750, optionValue: 114 }] },
+    } as unknown as DdbCharacter;
+    const client = {
+      get: vi.fn().mockResolvedValueOnce(character).mockResolvedValueOnce([{ id: 115, name: "Draconic Bloodline", parentClassId: 6 }]),
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    await setSubclass(client, { characterId: 123, subclassName: "Draconic Bloodline" });
+
+    expect(client.put).toHaveBeenCalledWith(
+      expect.stringContaining("/class/feature/choice"),
+      expect.objectContaining({ choiceKey: "7-750", choiceValue: 115 }),
+      ["character:123"]
+    );
+  });
+
+  it("lists ordinary spells using the base class ID", async () => {
+    const client = { get: vi.fn().mockResolvedValueOnce(shadowSorcerer).mockResolvedValueOnce([acidSplash]).mockResolvedValueOnce([acidSplash]) } as unknown as DdbClient;
+
+    const result = await listClassSpells(client, { characterId: 123, name: "acid" });
+
+    expect(client.get).toHaveBeenCalledWith(expect.stringContaining("classId=6&classLevel=5"), "class-spells:6:5");
+    expect(result.content[0].text).toContain("Definition 1989");
+  });
+
+  it("adds a spell with the captured POST body", async () => {
+    const client = {
+      get: vi.fn().mockResolvedValueOnce(shadowSorcerer).mockResolvedValueOnce([acidSplash]).mockResolvedValueOnce([acidSplash]),
+      post: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    await addCharacterSpell(client, { characterId: 123, spellName: "Acid Splash" });
+
+    expect(client.post).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/spell"),
+      { characterId: 123, characterClassId: 234222691, spellId: 1989, id: 136018, entityTypeId: 435869154 },
+      ["character:123"]
+    );
+  });
+
+  it("adds multiple spells with one catalogue lookup", async () => {
+    const client = {
+      get: vi.fn().mockResolvedValueOnce(shadowSorcerer).mockResolvedValueOnce([acidSplash]).mockResolvedValueOnce([acidSplash]),
+      post: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await addCharacterSpells(client, {
+      characterId: 123,
+      spellNames: ["Acid Splash", "Missing Spell"],
+    });
+
+    expect(client.get).toHaveBeenCalledTimes(3);
+    expect(client.post).toHaveBeenCalledTimes(1);
+    expect(result.content[0].text).toContain("Added 1 spell(s)");
+    expect(result.content[0].text).toContain("Missing Spell");
+  });
+
+  it("prepares multiple spells with the captured PUT body", async () => {
+    const bane = {
+      ...acidSplash,
+      id: 136081,
+      definition: { ...acidSplash.definition, id: 2009, name: "Bane", level: 1 },
+      prepared: false,
+    };
+    const character = {
+      ...shadowSorcerer,
+      classSpells: [{ characterClassId: 234222691, spells: [bane] }],
+    } as unknown as DdbCharacter;
+    const client = {
+      get: vi.fn().mockResolvedValueOnce(character).mockResolvedValueOnce([bane]),
+      put: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    const result = await setCharacterSpellsPrepared(client, {
+      characterId: 123,
+      spellNames: ["Bane"],
+      prepared: true,
+    });
+
+    expect(client.put).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/spell/prepared"),
+      { characterId: 123, spellId: 2009, characterClassId: 234222691, entityTypeId: 435869154, id: 136081, prepared: true },
+      ["character:123"]
+    );
+    expect(result.content[0].text).toContain("Prepared 1 spell(s)");
+  });
+
+  it("removes a spell with the captured DELETE body", async () => {
+    const character = { ...shadowSorcerer, classSpells: [{ characterClassId: 234222691, spells: [acidSplash] }] } as unknown as DdbCharacter;
+    const client = {
+      get: vi.fn().mockResolvedValueOnce(character).mockResolvedValueOnce([acidSplash]).mockResolvedValueOnce([acidSplash]),
+      delete: vi.fn().mockResolvedValue({}),
+    } as unknown as DdbClient;
+
+    await removeCharacterSpell(client, { characterId: 123, spellName: "Acid Splash" });
+
+    expect(client.delete).toHaveBeenCalledWith(
+      expect.stringContaining("/character/v5/spell"),
+      { characterId: 123, spellId: 1989, characterClassId: 234222691, entityTypeId: 435869154, id: 136018 },
+      ["character:123"]
+    );
+  });
+
+  it("resolves a type-7 subclass choice from the subclass catalogue", async () => {
+    let resolved = false;
+    const unresolvedCharacter = {
+      ...shadowSorcerer,
+      classes: [{ ...shadowSorcerer.classes[0], subclassDefinition: null }],
+      choices: { class: [{ id: "7-750", type: 7, componentId: 750, optionValue: null }] },
+    } as unknown as DdbCharacter;
+    const resolvedCharacter = {
+      ...unresolvedCharacter,
+      choices: { class: [{ id: "7-750", type: 7, componentId: 750, optionValue: 114 }] },
+    } as unknown as DdbCharacter;
+    const client = {
+      get: vi.fn(async (url: string) => {
+        if (url.includes("/game-data/subclasses")) return [{ id: 114, name: "Shadow Magic", parentClassId: 6 }];
+        return resolved ? resolvedCharacter : unresolvedCharacter;
+      }),
+      put: vi.fn(async () => { resolved = true; }),
+    } as unknown as DdbClient;
+
+    const result = await resolveChoices(client, { characterId: 123 });
+
+    expect(client.put).toHaveBeenCalledWith(
+      expect.stringContaining("/class/feature/choice"),
+      expect.objectContaining({ choiceValue: 114 }),
+      ["character:123"]
+    );
+    expect(result.content[0].text).toContain("All choices resolved");
   });
 });

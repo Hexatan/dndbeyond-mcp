@@ -32,6 +32,7 @@ export interface DdbCharacter {
   campaign: { id: number; name: string } | null;
   feats: DdbFeat[];
   notes: DdbNotes;
+  choices?: DdbChoices;
   level?: number;
   pactMagic?: {
     level: number;
@@ -79,6 +80,7 @@ export interface DdbClass {
   };
   spellCastingAbilityId?: number | null;
   subclassDefinition: {
+    id?: number;
     name: string;
     classFeatures: DdbClassFeature[];
     canCastSpells?: boolean;
@@ -142,6 +144,8 @@ export interface DdbSpellsContainer {
 
 export interface DdbSpell {
   id: number;
+  entityTypeId?: number;
+  definitionId?: number;
   definition: {
     id?: number;
     name: string;
@@ -221,8 +225,8 @@ export interface DdbTraits {
 export interface DdbLimitedUse {
   maxUses: number;
   numberUsed: number;
-  resetType: number; // 1 = Long Rest, 2 = Short Rest
-  resetTypeDescription: string;
+  resetType: number; // 1 = Short Rest, 2 = Long Rest
+  resetTypeDescription?: string | null;
 }
 
 export interface DdbAction {
@@ -248,6 +252,8 @@ export interface DdbModifier {
 
 export interface DdbFeat {
   definition: {
+    id?: number;
+    entityTypeId?: number;
     name: string;
     description: string;
     snippet: string | null;
@@ -260,15 +266,43 @@ export interface DdbFeat {
 export interface DdbClassFeature {
   // Class features nest under .definition; subclass features are flat
   definition?: {
+    id?: number;
     name: string;
     requiredLevel: number;
     description: string;
     snippet: string | null;
   };
   // Flat fields (subclass features)
+  id?: number;
   name?: string;
   requiredLevel?: number;
   description?: string;
+}
+
+export interface DdbChoiceOption {
+  id: number;
+  label: string;
+  description?: string | null;
+}
+
+export interface DdbChoice {
+  id: string;
+  label?: string;
+  componentId: number;
+  componentTypeId: number;
+  type: number;
+  optionValue: number | null;
+  optionIds?: number[];
+  parentChoiceId?: string | number | null;
+}
+
+export interface DdbChoices {
+  class?: DdbChoice[];
+  feat?: DdbChoice[];
+  choiceDefinitions?: Array<{
+    id: string;
+    options: DdbChoiceOption[];
+  }>;
 }
 
 export interface DdbRacialTrait {

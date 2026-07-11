@@ -2,7 +2,7 @@
 
 A TypeScript MCP (Model Context Protocol) server for D&D Beyond. Gives Claude and other MCP-compatible AI assistants access to your characters, campaigns, encounters, spells, monsters, items, and character builder.
 
-> **This is a fork** of [AlexWorland/dndbeyond-mcp](https://github.com/AlexWorland/dndbeyond-mcp). It adds character creation, encounter management, PDF character sheets, downloadable compendium snapshots, edition-aware reference lookups, and live session checks. The current package version is **`0.5.1`**.
+> **This is a fork** of [AlexWorland/dndbeyond-mcp](https://github.com/AlexWorland/dndbeyond-mcp). It adds character creation, encounter management, PDF character sheets, downloadable compendium snapshots, edition-aware reference lookups, and live session checks. The current package version is **`0.5.2`**.
 
 > **Disclaimer:** This project uses unofficial, reverse-engineered D&D Beyond endpoints. It is not affiliated with, endorsed by, or supported by D&D Beyond or Wizards of the Coast. Endpoints may change without notice.
 
@@ -83,7 +83,10 @@ npm run compendium:download -- --fresh
 - `add_class` / `set_class_level` — Add a class or change class level
 - `set_species` — Set race/species by entity IDs
 - `set_background` / `set_background_choice` — Set background and background choices
-- `set_class_feature_choice` / `set_race_trait_choice` / `set_feat_choice` — Resolve builder choices
+- `list_class_feature_choices` / `set_class_feature_choice` — Discover and resolve every active class choice by name or ID, including skills, expertise, spells, feats, and subclasses
+- `set_race_trait_choice` / `set_feat_choice` — Resolve species and feat choices
+- `list_subclasses` / `set_subclass` — Discover and select subclasses by name
+- `list_class_spells` / `add_character_spell` / `remove_character_spell` — Manage known or prepared class spells
 - `resolve_choices` — Auto-resolve unresolved builder choices using first available options
 - `set_ability_score_type` / `set_ability_score` — Set ability score method and values
 - `set_character_preferences` — Configure advancement, HP, privacy, homebrew, optional features, prerequisite rules, and display preferences
@@ -126,29 +129,30 @@ D&D Beyond's unofficial write endpoints are inconsistent. HP, inspiration, condi
 
 ## Resources
 
-| URI | Description |
-|-----|-------------|
-| `dndbeyond://characters` | Your character list |
-| `dndbeyond://character/{id}` | Character sheet |
-| `dndbeyond://character/{id}/spells` | Spell list |
-| `dndbeyond://character/{id}/inventory` | Inventory |
-| `dndbeyond://campaigns` | Your campaigns |
-| `dndbeyond://campaign/{id}/party` | Party roster |
+| URI                                    | Description         |
+|----------------------------------------|---------------------|
+| `dndbeyond://characters`               | Your character list |
+| `dndbeyond://character/{id}`           | Character sheet     |
+| `dndbeyond://character/{id}/spells`    | Spell list          |
+| `dndbeyond://character/{id}/inventory` | Inventory           |
+| `dndbeyond://campaigns`                | Your campaigns      |
+| `dndbeyond://campaign/{id}/party`      | Party roster        |
 
 ## Prompts
 
-| Prompt | Purpose |
-|--------|---------|
-| `character-summary` | Full character rundown |
+| Prompt              | Purpose                                                        |
+|---------------------|----------------------------------------------------------------|
+| `character-summary` | Full character rundown                                         |
 | `character-creator` | Conversational, confirmation-first character creation workflow |
-| `session-prep` | DM session preparation |
-| `encounter-builder` | Balanced encounter design |
-| `spell-advisor` | Spell recommendations |
-| `level-up-guide` | Level-up walkthrough |
-| `rules-lookup` | Rules clarification |
+| `session-prep`      | DM session preparation                                         |
+| `encounter-builder` | Balanced encounter design                                      |
+| `spell-advisor`     | Spell recommendations                                          |
+| `level-up-guide`    | Level-up walkthrough                                           |
+| `rules-lookup`      | Rules clarification                                            |
 
 ## Version History
 
+- **`v0.5.2`** — Adds checkbox trackers for Sorcery, Ki, Focus, and other limited-use resources; selected Metamagic descriptions; and two-line spell descriptions on generated character sheets.
 - **`v0.5.1`** — Corrects HP and spell-slot calculations, includes complete known and granted spell lists, and redesigns generated character sheets with paginated boxed sections, full spell and inventory tables, and handwriting space. Generated character PDFs and previews are no longer tracked.
 - **`v0.5.0`** — Adds the guided `character-creator` workflow; character preferences, source categories, and appearance controls; resumable compendium snapshots; encounter management; PDF character sheets; bearer authentication support; and expanded character/tool output.
 - **`v0.4.0`** — `check_auth` is now a **real session-liveness probe**: it performs a cobalt-token exchange against D&D Beyond rather than only checking whether a config file exists, so callers can detect an expired-but-present cookie.

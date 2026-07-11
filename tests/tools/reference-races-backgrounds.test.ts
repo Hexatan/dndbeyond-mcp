@@ -6,18 +6,24 @@ import { DdbClient } from "../../src/api/client.js";
 // not name (see searchRaces in src/tools/reference.ts and commit b67d04f).
 const MOCK_RACES = [
   {
+    entityRaceId: 1,
+    entityRaceTypeId: 1743923279,
     fullName: "Human",
     description: "Humans are the most adaptable and ambitious people among the common races.",
     isHomebrew: false,
     sources: [{ sourceId: 1 }],
   },
   {
+    entityRaceId: 3,
+    entityRaceTypeId: 1743923279,
     fullName: "Elf",
     description: "Elves are a magical people of otherworldly grace, living in the world but not entirely part of it.",
     isHomebrew: false,
     sources: [{ sourceId: 1 }],
   },
   {
+    entityRaceId: 20,
+    entityRaceTypeId: 1743923279,
     fullName: "Half-Elf",
     description: "Half-elves combine what some say are the best qualities of their elf and human parents.",
     isHomebrew: false,
@@ -65,6 +71,8 @@ describe("searchRaces", () => {
     expect(result.content[0].text).toContain("Race Search Results");
     expect(result.content[0].text).toContain("Elf");
     expect(result.content[0].text).toContain("Half-Elf");
+    expect(result.content[0].text).toContain("Race ID: 3");
+    expect(result.content[0].text).toContain("Type ID: 1743923279");
   });
 
   it("shouldReturnNoResultsMessageWhenNoRacesFound", async () => {
@@ -115,6 +123,7 @@ describe("searchBackgrounds", () => {
 
     expect(result.content[0].text).toContain("Background Search Results");
     expect(result.content[0].text).toContain("Criminal");
+    expect(result.content[0].text).toContain("ID: 2");
   });
 
   it("shouldReturnNoResultsMessageWhenNoBackgroundsFound", async () => {

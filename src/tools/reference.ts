@@ -1287,7 +1287,7 @@ export async function searchClasses(
     const spellcasting = cls.spellCastingAbilityId
       ? ` | Spellcasting: ${STAT_NAMES[cls.spellCastingAbilityId] || "Yes"}`
       : "";
-    lines.push(`- **${cls.name}** — Hit Die: ${hitDie}${spellcasting}`);
+    lines.push(`- **${cls.name}** [ID: ${cls.id}] — Hit Die: ${hitDie}${spellcasting}`);
 
     const desc = stripHtml(cls.description || "").substring(0, 100);
     if (desc) lines.push(`  ${desc}${desc.length >= 100 ? "..." : ""}`);
@@ -1350,7 +1350,7 @@ export async function searchRaces(
     const name = race.fullName || race.baseName;
     const desc = stripHtml(race.description || "").substring(0, 100);
     const legacy = race.isLegacy ? " *(Legacy)*" : "";
-    lines.push(`- **${name}**${legacy} — ${desc}${desc.length >= 100 ? "..." : ""}`);
+    lines.push(`- **${name}**${legacy} [Race ID: ${race.entityRaceId}; Type ID: ${race.entityRaceTypeId}] — ${desc}${desc.length >= 100 ? "..." : ""}`);
   }
 
   return {
@@ -1400,7 +1400,7 @@ export async function searchBackgrounds(
   const lines = [`# Background Search Results (${matched.length} found)\n`];
   for (const bg of matched) {
     const desc = stripHtml(bg.description || "").substring(0, 100);
-    lines.push(`- **${bg.name}** — ${desc}${desc.length >= 100 ? "..." : ""}`);
+    lines.push(`- **${bg.name}** [ID: ${bg.id}] — ${desc}${desc.length >= 100 ? "..." : ""}`);
   }
 
   return {

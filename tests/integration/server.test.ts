@@ -24,7 +24,7 @@ function createTestServer(): { server: McpServer; client: DdbClient } {
 
   const server = new McpServer({
     name: "dndbeyond-mcp",
-    version: "0.5.1",
+    version: "0.5.2",
   });
 
   // Register all prompts
@@ -106,6 +106,7 @@ describe("MCP Server Integration", () => {
     expect(toolNames).toContain("set_character_preferences");
     expect(toolNames).toContain("set_character_source_categories");
     expect(toolNames).toContain("set_character_appearance");
+    expect(toolNames).toContain("list_class_feature_choices");
   });
 
   it("should list all registered resources", async () => {

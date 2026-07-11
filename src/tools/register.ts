@@ -18,8 +18,16 @@ import {
   createCharacter,
   deleteCharacter,
   addClass,
+  listSubclasses,
+  setSubclass,
+  listClassSpells,
+  addCharacterSpell,
+  addCharacterSpells,
+  setCharacterSpellsPrepared,
+  removeCharacterSpell,
   setBackground,
   setBackgroundChoice,
+  listClassFeatureChoices,
   setClassFeatureChoice,
   setRaceTraitChoice,
   setFeatChoice,
@@ -328,7 +336,7 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
 
   server.tool(
     "use_ability",
-    "Update uses of a limited-use ability (e.g., Favored Enemy, Dreadful Strike, Ki Points). Increments by 1 if 'uses' is not specified, or set exact count with 'uses'. Set uses to 0 to reset.",
+    "Update uses of a limited-use ability (e.g., Sorcery Points, Ki Points, Focus Points). Increments by 1 if 'uses' is not specified, or set exact count with 'uses'. Set uses to 0 to reset.",
     {
       characterId: z.coerce.number().describe("The character ID"),
       abilityName: z
@@ -462,6 +470,83 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
   );
 
   server.tool(
+    "list_subclasses",
+    "List available subclasses for a base class definition ID",
+    {
+      baseClassId: z.coerce.number().describe("The base class definition ID"),
+    },
+    async (params) => listSubclasses(client, { baseClassId: params.baseClassId })
+  );
+
+  server.tool(
+    "set_subclass",
+    "Set a character subclass by name using the live D&D Beyond subclass catalogue",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      subclassName: z.string().describe("Subclass name"),
+      className: z.string().optional().describe("Required for multiclass characters"),
+    },
+    async (params) => setSubclass(client, params)
+  );
+
+  server.tool(
+    "list_class_spells",
+    "List spells available in a character class or subclass spell picker",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      className: z.string().optional().describe("Required for multiclass characters"),
+      name: z.string().optional().describe("Optional partial spell name"),
+      level: z.coerce.number().min(0).max(9).optional().describe("Optional spell level (0-9)"),
+    },
+    async (params) => listClassSpells(client, params)
+  );
+
+  server.tool(
+    "add_character_spell",
+    "Add a known or prepared class spell by name",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      spellName: z.string().describe("Spell name"),
+      className: z.string().optional().describe("Required for multiclass characters"),
+    },
+    async (params) => addCharacterSpell(client, params)
+  );
+
+  server.tool(
+    "add_character_spells",
+    "Add multiple learned or spellbook class spells by name in one catalogue lookup. Does not enforce class quotas; account for feature-granted spells and verify the sheet picker counter.",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      spellNames: z.array(z.string()).min(1).describe("Spell names to add"),
+      className: z.string().optional().describe("Required for multiclass characters"),
+    },
+    async (params) => addCharacterSpells(client, params)
+  );
+
+  server.tool(
+    "set_character_spells_prepared",
+    "Prepare or unprepare multiple leveled class spells by name. Does not enforce ability- or class-based preparation limits; verify the sheet picker counter.",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      spellNames: z.array(z.string()).min(1).describe("Leveled spell names to prepare or unprepare"),
+      prepared: z.boolean().default(true).describe("True to prepare; false to unprepare"),
+      className: z.string().optional().describe("Required for multiclass characters"),
+    },
+    async (params) => setCharacterSpellsPrepared(client, params)
+  );
+
+  server.tool(
+    "remove_character_spell",
+    "Remove a known or prepared class spell by name",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      spellName: z.string().describe("Spell name"),
+      className: z.string().optional().describe("Required for multiclass characters"),
+    },
+    async (params) => removeCharacterSpell(client, params)
+  );
+
+  server.tool(
     "set_background",
     "Set a character's background",
     {
@@ -494,17 +579,29 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
   );
 
   server.tool(
-    "set_class_feature_choice",
-    "Resolve a class feature choice (e.g., warlock invocation, fighting style). Get choice data from the character's choices.class array.",
+    "list_class_feature_choices",
+    "List every active class feature choice with feature names, current selections, and labeled options, including skills, spells, feats, and subclasses",
     {
       characterId: z.coerce.number().describe("The character ID"),
-      classId: z.coerce.number().describe("The class definition ID"),
-      classFeatureId: z.coerce.number().describe("The class feature component ID"),
-      classMappingId: z.coerce.number().describe("The character's class mapping ID"),
-      type: z.coerce.number().describe("Choice type from the choice object"),
-      choiceKey: z.string().describe("Choice key identifier from the choice object"),
-      choiceValue: z.coerce.number().describe("Selected option ID"),
-      parentChoiceId: z.coerce.number().optional().describe("Parent choice ID (for nested choices)"),
+      className: z.string().optional().describe("Required for multiclass characters"),
+    },
+    async (params) => listClassFeatureChoices(client, params)
+  );
+
+  server.tool(
+    "set_class_feature_choice",
+    "Resolve or change a class feature choice by labeled option name or raw IDs. Use list_class_feature_choices first.",
+    {
+      characterId: z.coerce.number().describe("The character ID"),
+      choiceKey: z.string().describe("Choice key from list_class_feature_choices"),
+      optionName: z.string().optional().describe("Labeled option name, such as Arcana or Defense"),
+      className: z.string().optional().describe("Required for multiclass characters when deriving IDs"),
+      classId: z.coerce.number().optional().describe("Class or subclass definition ID for raw-ID calls"),
+      classFeatureId: z.coerce.number().optional().describe("Class feature component ID for raw-ID calls"),
+      classMappingId: z.coerce.number().optional().describe("Character class mapping ID for raw-ID calls"),
+      type: z.coerce.number().optional().describe("Choice type for raw-ID calls"),
+      choiceValue: z.coerce.number().optional().describe("Selected option ID; alternatively use optionName"),
+      parentChoiceId: z.union([z.string(), z.number()]).optional().describe("Parent choice ID (for nested choices)"),
     },
     async (params) =>
       setClassFeatureChoice(client, {
@@ -515,6 +612,8 @@ export function registerAllTools(server: McpServer, client: DdbClient): void {
         type: params.type,
         choiceKey: params.choiceKey,
         choiceValue: params.choiceValue,
+        optionName: params.optionName,
+        className: params.className,
         parentChoiceId: params.parentChoiceId,
       })
   );

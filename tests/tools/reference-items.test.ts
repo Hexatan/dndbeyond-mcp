@@ -218,6 +218,7 @@ describe("searchClasses", () => {
 
     expect(result.content[0].text).toContain("Fighter");
     expect(result.content[0].text).toContain("d10");
+    expect(result.content[0].text).toContain("ID: 10");
   });
 
   it("shouldAcceptEmptySearchParameters", async () => {

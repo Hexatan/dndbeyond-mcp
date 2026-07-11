@@ -297,6 +297,15 @@ describe("getCharacter", () => {
     expect(result.content[0].text).toContain("Name: Thorin Ironforge");
   });
 
+  it("formats a character that is still in the builder", async () => {
+    const client = createMockClient();
+    vi.mocked(client.get).mockResolvedValue({ ...mockCharacter, race: null } as unknown as DdbCharacter);
+
+    const result = await getCharacter(client, { characterId: 12345, detail: "sheet" });
+
+    expect(result.content[0].text).toContain("Race: Unselected");
+  });
+
   it("should handle missing character by name", async () => {
     const client = createMockClient();
     vi.mocked(client.get)
@@ -435,6 +444,24 @@ describe("getCharacter with detail levels", () => {
 
     expect(text2).toContain("=== Thorin Ironforge ===");
     expect(text2).toContain("--- Saving Throws");
+  });
+
+  it("formats point-pool reset timing when D&D Beyond omits its description", async () => {
+    const client = createMockClient();
+    const detailedChar = createDetailedMockCharacter();
+    detailedChar.actions.class = [{
+      id: 100,
+      entityTypeId: 200,
+      name: "Focus Points",
+      componentId: 1,
+      componentTypeId: 1,
+      limitedUse: { maxUses: 7, numberUsed: 2, resetType: 1 },
+    }];
+    vi.mocked(client.get).mockResolvedValue(detailedChar);
+
+    const result = await getCharacter(client, { characterId: 12345, detail: "sheet" });
+
+    expect(result.content[0].text).toContain("Focus Points: 5/7 (Short Rest)");
   });
 
   it("should return expanded definitions by detail='full'", async () => {

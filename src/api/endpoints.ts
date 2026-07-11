@@ -31,6 +31,8 @@ export const ENDPOINTS = {
     setClassFeatureChoice: () => `${DDB_CHARACTER_SERVICE}/character/v5/class/feature/choice`,
     setRaceTraitChoice: () => `${DDB_CHARACTER_SERVICE}/character/v5/race/trait/choice`,
     setFeatChoice: () => `${DDB_CHARACTER_SERVICE}/character/v5/feat/choice`,
+    spell: () => `${DDB_CHARACTER_SERVICE}/character/v5/spell`,
+    preparedSpell: () => `${DDB_CHARACTER_SERVICE}/character/v5/spell/prepared`,
     setRace: () => `${DDB_CHARACTER_SERVICE}/character/v5/race`,
     setAbilityScore: () => `${DDB_CHARACTER_SERVICE}/character/v5/character/ability-score`,
     setPreferences: () => `${DDB_CHARACTER_SERVICE}/character/v5/character/preferences`,
@@ -60,6 +62,10 @@ export const ENDPOINTS = {
     classes: () => `${DDB_CHARACTER_SERVICE}/character/v5/game-data/classes`,
     races: () => `${DDB_CHARACTER_SERVICE}/character/v5/game-data/races`,
     backgrounds: () => `${DDB_CHARACTER_SERVICE}/character/v5/game-data/backgrounds`,
+    subclasses: (baseClassId: number, sharingSetting = 2) =>
+      `${DDB_CHARACTER_SERVICE}/character/v5/game-data/subclasses?sharingSetting=${sharingSetting}&baseClassId=${baseClassId}`,
+    spells: (classId: number, classLevel: number, sharingSetting = 2) =>
+      `${DDB_CHARACTER_SERVICE}/character/v5/game-data/spells?sharingSetting=${sharingSetting}&classId=${classId}&classLevel=${classLevel}`,
     // sharingSetting=3 returns the broadest spell coverage (campaign/marketplace
     // shared content), e.g. ~548 wizard spells vs ~126 at sharingSetting=2.
     alwaysKnownSpells: (classId: number, classLevel: number = 20) =>
